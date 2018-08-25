@@ -1,4 +1,4 @@
-# [WIP] fastlm-core
+# [WIP] fit-fast
 
 A stripped down version of fastai for NLP tasks. Built using fastai library by J. Howard.
 

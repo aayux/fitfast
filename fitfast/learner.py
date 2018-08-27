@@ -1,6 +1,6 @@
 from .imports import *
-from .torch_imports import *
-from .core import *
+from .utils.core import *
+from .utils.extras import *
 from .fit import *
 from .dataset import *
 from .schedules import *
@@ -275,7 +275,7 @@ class Learner():
             self.swa_model = copy.deepcopy(model)
             callbacks += [SWA(model, self.swa_model, swa_start)]
 
-        n_epoch = int(sum_geom(cycle_len if cycle_len else 1, cycle_mult, n_cycle))
+        n_epoch = int(gp_sum(cycle_len if cycle_len else 1, cycle_mult, n_cycle))
         return fit(model, data, n_epoch, layer_opt.opt, self.crit, 
                    metrics=metrics, callbacks=callbacks, 
                    regularizer=self.regularizer, clip=self.clip, fp16=self.fp16, 

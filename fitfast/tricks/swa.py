@@ -1,6 +1,6 @@
 import torch
 from ..callbacks import Callback
-from ..core import *
+from ..utils.core import *
 
 
 class SWA(Callback):

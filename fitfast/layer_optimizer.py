@@ -1,6 +1,7 @@
 from .imports import *
-from .torch_imports import *
-from .core import *
+from .utils.core import *
+from .utils.extras import *
+
 
 def optimizer_params(parameters, lr, wd):
     return {'params': chain_params(parameters), 

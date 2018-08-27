@@ -1,7 +1,7 @@
-## [WIP] ParallelDots Language Model API
-========================================
+# [WIP] FitFast
 
-Author: Aayush Yadav
-Email: aayush@paralleldots.com
+Currently a stripped down version of fastai for NLP tasks. Built using fastai library by J. Howard.
 
-Built using fastai library by J. Howard
+Contact: Aayush Yadav
+
+aayush@paralleldots.com

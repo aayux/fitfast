@@ -1,1 +1,7 @@
-.pyc
+.git/
+
+*__pycache__*
+__pycache__
+*.pyc
+.ipynb_checkpoints/
+*.ipynb_checkpoints/

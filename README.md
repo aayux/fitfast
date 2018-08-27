@@ -1,7 +1,7 @@
-# [WIP] fit-fast
-
-A stripped down version of fastai for NLP tasks. Built using fastai library by J. Howard.
+## [WIP] ParallelDots Language Model API
+========================================
 
 Author: Aayush Yadav
-
 Email: aayush@paralleldots.com
+
+Built using fastai library by J. Howard

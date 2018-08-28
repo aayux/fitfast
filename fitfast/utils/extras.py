@@ -36,3 +36,20 @@ def load_array(fname):
     loading operations. 
     """
     return bcolz.open(fname)[:]
+
+def draw_line(ax,x):
+    xmin, xmax, ymin, ymax = ax.axis()
+    ax.plot([x, x], [ymin, ymax], color='red', linestyle='dashed')
+
+def draw_text(ax,x, text):
+    xmin, xmax, ymin, ymax = ax.axis()
+    ax.text(x, (ymin + ymax) / 2, text, horizontalalignment='center', 
+            verticalalignment='center', fontsize=14, alpha=0.5)
+
+def curve_smoothing(vals, beta):
+    avg_val = 0
+    smoothed = []
+    for (i, v) in enumerate(vals):
+        avg_val = beta * avg_val + (1 - beta) * v
+        smoothed.append(avg_val / (1 - beta ** (i + 1)))
+    return smoothed

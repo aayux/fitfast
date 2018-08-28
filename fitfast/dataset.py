@@ -1,8 +1,7 @@
 import csv
 
 from .imports import *
-from .torch_imports import *
-from .core import *
+from .utils.core import *
 from .layer_optimizer import *
 from .dataloader import DataLoader
 
@@ -34,19 +33,19 @@ class BaseDataset(Dataset):
 
     @abstractmethod
     def get_n(self):
-        r"""Return number of elements in the dataset, ie., len(self).
+        r""" Return number of elements in the dataset, ie., len(self).
         """
         raise NotImplementedError
 
     @abstractmethod
     def get_c(self):
-        r"""Return number of classes in a dataset.
+        r""" Return number of classes in a dataset.
         """
         raise NotImplementedError
 
     @abstractmethod
     def get_sz(self):
-        r"""Return maximum size of a sample in a dataset.
+        r""" Return maximum size of a sample in a dataset.
         """
         raise NotImplementedError
 
@@ -71,7 +70,7 @@ class BaseDataset(Dataset):
 
     @property
     def is_reg(self):
-        r"""Returns True if training a regression model.
+        r""" Returns True if training a regression model.
         """
         return False
 
@@ -131,33 +130,33 @@ class ModelData(object):
     Encapsulates DataLoaders and Datasets for training, validation, test. 
     (Base class for and from fastai *Data classes)
     """
-    def __init__(self, path, trn_dl, val_dl, test_dl=None):
+    def __init__(self, path, train, val, test=None):
         self.path = path
-        self.trn_dl = trn_dl
-        self.val_dl = val_dl
-        self.test_dl = test_dl
+        self.train = train
+        self.val = val
+        self.test = test
 
     @classmethod
-    def from_dls(cls, path, trn_dl, val_dl, test_dl=None): 
-        return cls(path, trn_dl, val_dl, test_dl)
+    def from_dls(cls, path, train, val, test=None): 
+        return cls(path, train, val, test)
 
     @property
-    def is_reg(self): return self.trn_ds.is_reg
+    def is_reg(self): return self.train_ds.is_reg
     
     @property
-    def is_multi(self): return self.trn_ds.is_multi
+    def is_multi(self): return self.train_ds.is_multi
     
     @property
-    def trn_ds(self): return self.trn_dl.dataset
+    def train_ds(self): return self.train.dataset
     
     @property
-    def val_ds(self): return self.val_dl.dataset
+    def val_ds(self): return self.val.dataset
     
     @property
-    def test_ds(self): return self.test_dl.dataset
+    def test_ds(self): return self.test.dataset
     
     @property
-    def trn_y(self): return self.trn_ds.y
+    def train_y(self): return self.train_ds.y
     
     @property
     def val_y(self): return self.val_ds.y

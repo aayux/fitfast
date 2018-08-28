@@ -1,5 +1,4 @@
 from .imports import *
-from .torch_imports import *
 
 def accuracy(preds, targs):
     preds = torch.max(preds, dim=1)[1]
@@ -62,4 +61,5 @@ def fbeta_np(preds, targs, beta, thresh=0.5, epsilon=1e-8):
     return (1 + beta_sq) * prec * rec / (beta_sq * prec + rec + epsilon)
 
 def f1(log_preds, targs, thresh=0.5): return fbeta(log_preds, targs, 1, thresh)
+
 def f1_np(preds, targs, thresh=0.5): return fbeta_np(preds, targs, 1, thresh)

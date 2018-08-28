@@ -6,12 +6,12 @@ from .utils.extras import *
 def optimizer_params(parameters, lr, wd):
     return {'params': chain_params(parameters), 
             'lr': lr, 
-            'weight_decay': wd}
+            'wd': wd}
 
 class LayerOptimizer(object):
     def __init__(self, optimizer, layer_groups, lrs, wds=None):
         if not isinstance(layer_groups, (list, tuple)): 
-            layer_groups=[layer_groups]
+            layer_groups = [layer_groups]
         lrs = listify(lrs, layer_groups)
         if wds is None: wds = 0.
         wds = listify(wds, layer_groups)
@@ -92,5 +92,5 @@ def set_wds(opt, wds):
     wds = listify(wds, opt.param_groups)
     assert len(opt.param_groups) == len(wds), \
     f'size mismatch, expected {len(opt.param_groups)} wds, but got {len(wds)}'
-    for pg,wd in _zip_strict(opt.param_groups,wds): pg['weight_decay'] = wd
+    for pg,wd in _zip_strict(opt.param_groups,wds): pg['wd'] = wd
 

@@ -1,8 +1,82 @@
 from .imports import *
-from .torch_imports import *
 from .layer_optimizer import *
-from .logging import *
+from .utils.extras import draw_line, draw_text, curve_smoothing
 from enum import IntEnum
+
+class Recorder(Callback):
+    r"""
+    Saves and displays loss functions and other metrics. Also the default 
+    learning rate schedule when none is specified in a learner. 
+    """
+    def __init__(self, layer_opt, save_path='', record_momentum=False, 
+                 metrics=[]):
+        super().__init__()
+        self.layer_opt = layer_opt
+        self.init_lrs = np.array(layer_opt.lrs)
+        self.save_path = save_path 
+        self.record_momentum = record_momentum 
+        self.metrics = metrics
+
+    def on_train_begin(self):
+        self.losses, self.lrs, self.iters, self.epochs, self.times =  \
+                                                        [[] for _ in range(5)]
+        self.start_at = timer()
+        self.val_losses, self.rec_metrics = [], []
+        if self.record_momentum:
+            self.momenta = []
+        self.iter_ = 0
+        self.epoch = 0
+
+    def on_epoch_end(self, metrics):
+        self.epoch += 1
+        self.epochs.append(self.iter_)
+        self.times.append(timer() - self.start_at)
+        self.save_metrics(metrics)
+
+    def on_batch_end(self, loss):
+        self.iter_ += 1
+        self.lrs.append(self.layer_opt.lr)
+        self.iters.append(self.iter_)
+        if isinstance(loss, list):
+            self.losses.append(loss[0])
+            self.save_metrics(loss[1:])
+        else: self.losses.append(loss)
+        if self.record_momentum: self.momenta.append(self.layer_opt.momentum)
+
+    def save_metrics(self, metrics):
+        self.val_losses.append(delistify(metrics[0]))
+        if len(metrics) > 2: self.rec_metrics.append(metrics[1:])
+        elif len(metrics) == 2: self.rec_metrics.append(metrics[1])
+
+    def plot_loss(self, n_skip=10, n_skip_end=5):
+        r"""
+        Plots loss function. Plot will be displayed in console and both plot and 
+        loss values are saved in save_path. 
+        """
+        plt.switch_backend('agg')
+        plt.plot(self.iters[n_skip : -n_skip_end], 
+                 self.losses[n_skip : -n_skip_end])
+        plt.savefig(os.path.join(self.save_path, 'loss.png'))
+        np.save(os.path.join(self.save_path, 'losses.npy'), self.losses[10:])
+
+    def plot_learningrate(self):
+        r"""
+        Plots learning rate in console, depending on the enviroment of the 
+        learner.
+        """
+        plt.switch_backend('agg')
+        if self.record_momentum:
+            fig, axs = plt.subplots(1, 2, figsize=(12, 4))
+            for i in range(0, 2): axs[i].set_xlabel('iterations')
+            axs[0].set_ylabel('learning rate')
+            axs[1].set_ylabel('momentum')
+            axs[0].plot(self.iters, self.lrs)
+            axs[1].plot(self.iters, self.momenta)   
+        else:
+            plt.xlabel('iterations')
+            plt.ylabel('learning rate')
+            plt.plot(self.iters, self.lrs)
+            plt.savefig(os.path.join(self.save_path, 'learning_rate_sched.png'))
 
 class LearningRateUpdater(Recorder):
     r"""
@@ -57,15 +131,15 @@ class LearningRateFinder(LearningRateUpdater):
         self.best = 1e9
 
     def calc_lr(self, init_lrs):
-        mult = self.lr_mult * self.iteration if self.linear \
-                                             else self.lr_mult ** self.iteration
+        mult = self.lr_mult * self.iter_ if self.linear \
+                                             else self.lr_mult ** self.iter_
         return init_lrs * mult
 
     def on_batch_end(self, metrics):
         loss = metrics[0] if isinstance(metrics, list) else metrics
         if self.stop and (math.isnan(loss) or loss > self.best * 4):
             return True
-        if (loss < self.best and self.iteration > 10): self.best = loss
+        if (loss < self.best and self.iter_ > 10): self.best = loss
         return super().on_batch_end(metrics)
 
     def plot(self, n_skip=10, n_skip_end=5):
@@ -91,7 +165,7 @@ class LearningRateFinderAlt(LearningRateFinder):
         self.stop = stop
 
     def on_batch_end(self, loss):
-        if self.iteration == self.nb:
+        if self.iter_ == self.nb:
             return True
         return super().on_batch_end(loss)
 
@@ -137,7 +211,7 @@ class CosineAnnealing(LearningRateUpdater):
         super().on_train_begin()
 
     def calc_lr(self, init_lrs):
-        if self.iteration < self.nb / 20:
+        if self.iter_ < self.nb / 20:
             self.cycle_iter += 1
             return init_lrs / 100.
 
@@ -158,14 +232,14 @@ class CircularLearningRate(LearningRateUpdater):
     linearly. 
     """
     def __init__(self, layer_opt, nb, div=4, cut_div=8, on_cycle_end=None, 
-                 momentums=None):
+                 momenta=None):
         self.nb = nb
         self.div = div
         self.cut_div = cut_div
         self.on_cycle_end = on_cycle_end
-        if momentums is not None:
-            self.momentums = momentums
-        super().__init__(layer_opt, record_momentum=(momentums is not None))
+        if momenta is not None:
+            self.momenta = momenta
+        super().__init__(layer_opt, record_momentum=(momenta is not None))
 
     def on_train_begin(self):
         self.cycle_iter = 0
@@ -190,7 +264,7 @@ class CircularLearningRate(LearningRateUpdater):
         if self.cycle_iter > cut_point:
             ratio = (self.cycle_iter - cut_point) / (self.nb - cut_point)
         else: ratio = 1 - self.cycle_iter / cut_point
-        res = self.momentums[1] + ratio * (self.momentums[0] - self.momentums[1])
+        res = self.momenta[1] + ratio * (self.momenta[0] - self.momenta[1])
         return res
 
 class CircularLearningRateAlt(LearningRateUpdater):
@@ -200,15 +274,15 @@ class CircularLearningRateAlt(LearningRateUpdater):
     momentum, and weight decay (arxiv.org/abs/1803.09820).
     """
     def __init__(self, layer_opt, nb, div=10, ratio=10, on_cycle_end=None, 
-                 momentums=None):
+                 momenta=None):
         self.nb = nb
         self.div = div
         self.ratio = ratio
         self.on_cycle_end = on_cycle_end
         self.cycle_nb = int(nb * (1 - ratio / 100) / 2)
-        if momentums is not None:
-            self.momentums = momentums
-        super().__init__(layer_opt, record_momentum=(momentums is not None))
+        if momenta is not None:
+            self.momenta = momenta
+        super().__init__(layer_opt, record_momentum=(momenta is not None))
 
     def on_train_begin(self):
         self.cycle_iter = 0
@@ -235,19 +309,19 @@ class CircularLearningRateAlt(LearningRateUpdater):
 
     def calc_momentum(self):
         if self.cycle_iter > 2 * self.cycle_nb:
-            res = self.momentums[0]
+            res = self.momenta[0]
         elif self.cycle_iter > self.cycle_nb:
             ratio = 1 - (self.cycle_iter - self.cycle_nb) / self.cycle_nb
-            res = self.momentums[0] + ratio * \
-                 (self.momentums[1] - self.momentums[0])
+            res = self.momenta[0] + ratio * \
+                 (self.momenta[1] - self.momenta[0])
         else:
             ratio = self.cycle_iter / self.cycle_nb
-            res = self.momentums[0] + ratio * \
-                 (self.momentums[1] - self.momentums[0])
+            res = self.momenta[0] + ratio * \
+                 (self.momenta[1] - self.momenta[0])
         return res
 
 class WeightDecaySchedule(Callback):
-    def __init__(self, layer_opt, batch_per_epoch, cycle_len, cycle_mult, 
+    def __init__(self, layer_opt, n_batches, cycle_len, cycle_mult, 
                  n_cycles, norm_wds=False, wds_sched_mult=None):
         r"""
         Implements the weight decay schedule as proposed in Fixing Weight Decay 
@@ -255,7 +329,7 @@ class WeightDecaySchedule(Callback):
 
         Arguments:
             layer_opt: Object if class LayerOptimizer.
-            batch_per_epoch: Number of batches in an epoch.
+            n_batches: Number of batches in an epoch.
             cycle_len: Num epochs in initial cycle. 
                     Subsequent cycle_len = previous cycle_len * cycle_mult
             cycle_mult: The cycle multiplier.
@@ -263,35 +337,34 @@ class WeightDecaySchedule(Callback):
         """
         super().__init__()
         self.layer_opt = layer_opt
-        self.batch_per_epoch = batch_per_epoch
+        self.n_batches = n_batches
         
-        # weight decat schedule as set by user
+        # weight decay parameter value as set by user
         self.init_wds = np.array(layer_opt.wds)
         
-        # Learning rates as initlaised by user
+        # learning rate as initlaised by user
         self.init_lrs = np.array(layer_opt.lrs)
         
-        # holds the new weight decay factors, calculated with on_batch_begin()
+        # holds the new weight decay factors, calculated at on_batch_begin()
         self._wds = None
         
-        self.iteration = 0
+        self.iter_ = 0
         self.epoch = 0
         self.wds_sched_mult = wds_sched_mult
         self.norm_wds = norm_wds
         self.wds_history = list()
 
         # pre-calculating the number of epochs in current cycle
-        self.epoch_to_num_cycles = dict()
-        i = 0
-        
+        self.cycle_epochs = dict()
+        idx = 0
         for cycle in range(n_cycles):
             for _ in range(cycle_len):
-                self.epoch_to_num_cycles[i] = cycle_len
-                i += 1
+                self.cycle_epochs[idx] = cycle_len
+                idx += 1
             cycle_len *= cycle_mult
 
     def on_train_begin(self):
-        self.iteration = 0
+        self.iter_ = 0
         self.epoch = 0
 
     def on_batch_begin(self):
@@ -305,8 +378,7 @@ class WeightDecaySchedule(Callback):
 
         # normalize weight decay
         if self.norm_wds:
-            _wds = _wds / np.sqrt(self.batch_per_epoch * \
-                                self.epoch_to_num_cycles[self.epoch])
+            _wds = _wds / np.sqrt(self.n_batches * self.cycle_epochs[self.epoch])
         
         self._wds = eta * _wds
 
@@ -316,13 +388,13 @@ class WeightDecaySchedule(Callback):
         
         # we have to save the existing weights before the optimizer changes the 
         # values
-        self.iteration += 1
+        self.iter_ += 1
 
     def on_epoch_end(self, metrics):
         self.epoch += 1
 
-class DecayType(IntEnum):
-    r""" Data class to enumerate each decay type. 
+class RateDecayType(IntEnum):
+    r""" Data class to enumerate each learning rate decay type. 
     """
     NO = 1
     LINEAR = 2
@@ -330,7 +402,7 @@ class DecayType(IntEnum):
     EXPONENTIAL = 4
     POLYNOMIAL = 5
 
-class DecayScheduler(object):
+class RateDecayScheduler(object):
     r"""
     Given initial and end values, this class generates the next value depending 
     on decay type and number of iterations. (by calling next_val().) 
@@ -342,24 +414,24 @@ class DecayScheduler(object):
         self.start_val = start_val 
         self.end_val = end_val 
         self.extra = extra
-        self.iteration = 0
+        self.iter_ = 0
         if self.end_val is None and not (self.dec_type in [1, 4]): 
             self.end_val = 0
     
     def next_val(self):
-        self.iteration += 1
-        if self.dec_type == DecayType.NO:
+        self.iter_ += 1
+        if self.dec_type == RateDecayType.NO:
             return self.start_val
-        elif self.dec_type == DecayType.LINEAR:
-            ratio = self.iteration / self.nb
+        elif self.dec_type == RateDecayType.LINEAR:
+            ratio = self.iter_ / self.nb
             return self.start_val + ratio * (self.end_val - self.start_val)
-        elif self.dec_type == DecayType.COSINE:
-            rate = np.cos(np.pi * (self.iteration) / self.nb) + 1
+        elif self.dec_type == RateDecayType.COSINE:
+            rate = np.cos(np.pi * (self.iter_) / self.nb) + 1
             return self.end_val + (self.start_val - self.end_val) / 2 * rate
-        elif self.dec_type == DecayType.EXPONENTIAL:
+        elif self.dec_type == RateDecayType.EXPONENTIAL:
             ratio = self.end_val / self.start_val
-            return self.start_val * (ratio **  (self.iteration / self.nb))
-        elif self.dec_type == DecayType.POLYNOMIAL:
+            return self.start_val * (ratio **  (self.iter_ / self.nb))
+        elif self.dec_type == RateDecayType.POLYNOMIAL:
             return self.end_val + (self.start_val - self.end_val) \
                     * (1 - self.it / self.nb) ** self.extra    
 
@@ -381,7 +453,7 @@ class OptimScheduler(Recorder):
         loss = metrics[0] if isinstance(metrics, list) else metrics
         if self.stop and (math.isnan(loss) or loss > self.best * 4):
             return True
-        if (loss < self.best and self.iteration > 10): self.best = loss
+        if (loss < self.best and self.iter_ > 10): self.best = loss
         super().on_batch_end(metrics)
         self.phases[self.phase].update()
     
@@ -392,22 +464,22 @@ class OptimScheduler(Recorder):
     def on_phase_end(self):
         self.phase += 1
 
-    def plot_lr(self, show_text=True, show_momentums=True):
+    def plot_lr(self, show_text=True, show_momenta=True):
         r""" Plots the lr rate and momentum schedule.
         """
         phase_limits = [0]
         for nb_batch, phase in zip(self.nb_batches, self.phases):
             phase_limits.append(phase_limits[-1] + nb_batch * phase.epochs)
         plt.switch_backend('agg')
-        np_plts = 2 if show_momentums else 1
+        np_plts = 2 if show_momenta else 1
         fig, axs = plt.subplots(1,np_plts, figsize=(6 * np_plts, 4))
-        if not show_momentums: axs = [axs]
+        if not show_momenta: axs = [axs]
         for i in range(np_plts): axs[i].set_xlabel('iterations')
         axs[0].set_ylabel('learning rate')
-        axs[0].plot(self.iterations, self.lrs)
-        if show_momentums:
+        axs[0].plot(self.iters, self.lrs)
+        if show_momenta:
             axs[1].set_ylabel('momentum')
-            axs[1].plot(self.iterations, self.momentums)
+            axs[1].plot(self.iters, self.momenta)
         if show_text:
             for i, phase in enumerate(self.phases):
                 text = phase.opt_fn.__name__
@@ -445,19 +517,19 @@ class TrainingPhase(object):
         of a model training.
 
         Arguments:
-            epochs: number of epochs to train like this.
-            optimizer: an optimizer (example optim.Adam).
-            lr: one learning rate or a tuple of the form (start_lr,end_lr) each 
+            epochs: Number of epochs to train like this.
+            optimizer: An optimizer (example optim.Adam).
+            lr: One learning rate or a tuple of the form (start_lr,end_lr) each 
                     of those can be a list/numpy array for differential learning 
                     rates.
-            lr_decay: a DecayType object specifying how the learning rate should
+            lr_decay: A DecayType object specifying how the learning rate should
                     change.
-            momentum: one momentum (or beta1 in case of Adam), or a tuple of the
+            momentum: One momentum (or beta1 in case of Adam), or a tuple of the
                     form (start, end).
-            momentum_decay: a DecayType object specifying how the momentum 
+            momentum_decay: A DecayType object specifying how the momentum 
                     should change.
             beta: beta2 parameter in Adam or alpha parameter in RMSProp.
-            wds: weight decay (can be an array for differential wds).
+            wds: Weight decay (can be an array for differential wds).
         """
         self.epochs = epochs 
         self.optimizer = optimizer 

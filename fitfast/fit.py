@@ -2,7 +2,7 @@ from .imports import *
 from .utils.core import *
 from .utils.extras import *
 from .layer_optimizer import *
-from .bot.swa import *
+from .tricks.swa import *
 # from .fp16 import *
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')

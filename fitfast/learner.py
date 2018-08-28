@@ -7,14 +7,14 @@ from .schedules import *
 from .layer_optimizer import *
 from .logging import summarize
 from .metrics import *
-from .bot.swa import *
+from .tricks.swa import *
 # from .fp16 import *
 import time
 
 
 class Learner():
-    def __init__(self, data, models, opt_fn=None, tmp_name='tmp', 
-                 models_name='models', metrics=None, clip=None, crit=None):
+    def __init__(self, data, models, optimizer=None, metrics=None, clip=None, 
+                 crit=None):
         r"""
         Combines a ModelData object with a nn.Module object, such that you can 
         train that module.
@@ -22,29 +22,25 @@ class Learner():
         Args:
             data (ModelData): An instance of ModelData.
             models(module): chosen neural architecture for solving a supported 
-                            problem.
-            opt_fn(function): Optimizer function, uses SGD with Momentum of .9 
-                              if none.
-            tmp_name(str): Output name of the directory containing temporary 
-                           files from training process
-            models_name(str): Output name of the directory containing the 
-                              trained model
-            metrics(list): Array of functions for evaluating a desired metric. 
-                           Eg. accuracy.
+                    problem.
+            optimizer(function): Optimizer function, uses SGD with Momentum of 
+                                .9 if none is provided.
+            metrics(list): Array of functions for evaluating a desired metric, 
+                    for eg. accuracy.
             clip(float): Gradient clip chosen to limit the change in the 
-                         gradient to prevent exploding gradients Eg. .3
+                    gradient to prevent exploding gradients Eg. .3
         """
-        self.data_ = data
+        self.data = data
         self.models = models
         self.metrics = metrics
         self.sched = None
         self.wd_sched = None
-        self.clip = None
-        self.opt_fn = opt_fn or SGD_Momentum(0.9)
-        self.tmp_path = tmp_name if os.path.isabs(tmp_name) \
-                                 else os.path.join(self.data.path, tmp_name)
-        self.models_path = models_name if os.path.isabs(models_name) \
-                                 else os.path.join(self.data.path, models_name)
+        self.clip = clip
+        self.optimizer = optimizer or sgd_with_momentum()
+        self.tmp_path = TMP_DIR if os.path.isabs(TMP_DIR) \
+                                 else os.path.join(self.data.path, TMP_DIR)
+        self.models_path = MODELS_DIR if os.path.isabs(MODELS_DIR) \
+                                 else os.path.join(self.data.path, MODELS_DIR)
         os.makedirs(self.tmp_path, exist_ok=True)
         os.makedirs(self.models_path, exist_ok=True)
         self.crit = crit if crit else self._get_crit(data)
@@ -57,7 +53,7 @@ class Learner():
         self.unfreeze()
         return self
 
-    def __getitem__(self,i): return self.children[i]
+    def __getitem__(self, idx): return self.children[idx]
 
     @property
     def children(self): return children(self.model)
@@ -66,23 +62,13 @@ class Learner():
     def model(self): return self.models.model
 
     @property
-    def data(self): return self.data_
+    def data(self): return self.data
 
     def summary(self): 
         return summarize(self.model, 
                             [torch.rand(3, 3, self.data.sz, self.data.sz)])
 
     def __repr__(self): return self.model.__repr__()
-    
-    def lsuv_init(self, needed_std=1.0, std_tol=0.1, max_attempts=10, 
-                  do_orthonorm=False):         
-        x = V(next(iter(self.data.trn_dl))[0])
-        self.models.model = apply_lsuv_init(self.model, x, needed_std=needed_std, 
-                                            std_tol=std_tol, 
-                                            max_attempts=max_attempts,
-                                            do_orthonorm=do_orthonorm, 
-                                            cuda=USE_GPU and \
-                                            torch.cuda.is_available())
 
     def set_bn_freeze(self, m, do_freeze):
         if hasattr(m, 'running_mean'): m.bn_freeze = do_freeze
@@ -128,7 +114,7 @@ class Learner():
             load_model(self.swa_model, 
                        self.get_model_path(name)[:-3] + '_swa.h5')
 
-    def set_data(self, data): self.data_ = data
+    def set_data(self, data): self.data = data
 
     def get_cycle_end(self, name):
         if name is None: return None
@@ -232,9 +218,9 @@ class Learner():
             if np.sum(layer_opt.wds) == 0:
                 print(f'fit() warning: use_wd_sched is set to True, but weight '
                 f'decay(s) passed are 0. Use wds to pass weight decay values.')
-            batch_per_epoch = len(data.trn_dl)
+            n_batches = len(data.trn_dl)
             cl = cycle_len if cycle_len else 1
-            self.wd_sched = WeightDecaySchedule(layer_opt, batch_per_epoch, cl, 
+            self.wd_sched = WeightDecaySchedule(layer_opt, n_batches, cl, 
                                                 cycle_mult, n_cycle, norm_wds, 
                                                 wds_sched_mult)
             callbacks += [self.wd_sched]
@@ -257,13 +243,15 @@ class Learner():
             self.sched = CircularLearningRateAlt(layer_opt, 
                                                  len(data.trn_dl) * cycle_len,
                                                  on_cycle_end=cycle_end, div=div, 
-                                                 ratio=ratio, momentums=momentums)
+                                                 ratio=ratio, 
+                                                 momentums=momentums)
         elif cycle_len:
             cycle_end = self.get_cycle_end(cycle_save_name)
             cycle_batches = len(data.trn_dl) * cycle_len
             self.sched = CosAnneal(layer_opt, cycle_batches, 
-                                   on_cycle_end=cycle_end, cycle_mult=cycle_mult)
-        elif not self.sched: self.sched = LossRecorder(layer_opt)
+                                   on_cycle_end=cycle_end, 
+                                   cycle_mult=cycle_mult)
+        elif not self.sched: self.sched =  Recorder(layer_opt)
         callbacks += [self.sched]
 
         if best_save_name is not None:
@@ -276,6 +264,7 @@ class Learner():
             callbacks += [SWA(model, self.swa_model, swa_start)]
 
         n_epoch = int(gp_sum(cycle_len if cycle_len else 1, cycle_mult, n_cycle))
+        
         return fit(model, data, n_epoch, layer_opt.opt, self.crit, 
                    metrics=metrics, callbacks=callbacks, 
                    regularizer=self.regularizer, clip=self.clip, fp16=self.fp16, 
@@ -403,17 +392,11 @@ class Learner():
         m = self.swa_model if use_swa else self.model
         return predict_with_targs(m, dl)
 
-    def predict_dl(self, dl): return predict_with_targs(self.model, dl)[0]
-
-    def predict_array(self, arr):
-        self.model.eval()
-        return to_np(self.model(to_gpu(V(T(arr)))))
-
     def fit_opt_sched(self, phases, cycle_save_name=None, best_save_name=None, 
-                      stop_div=False, data_list=None, callbacks=None, cut=None,
+                      stop=False, data_list=None, callbacks=None, cut=None,
                       use_swa=False, swa_start=1, swa_eval_freq=5, **kwargs):
         r"""
-        Wraps us the content of phases to send them to model.fit
+        Wraps the content of phases to send them to model.fit
 
         This will split the training in several parts, each with their own 
         learning rates/wds/momentums/optimizer detailed in phases.
@@ -422,9 +405,9 @@ class Learner():
         train on different datasets (to change the size for instance) for each 
         of these groups.
 
-        Args:
+        Arguments:
             phases: A list of TrainingPhase objects
-            stop_div: When True, stops the training if the loss goes too high
+            stop: When True, stops the training if the loss goes too high
             data_list: A list of different Data objects.
             kwargs: Other arguments
             use_swa (bool, optional): When this is set to True, it will enable 
@@ -454,7 +437,7 @@ class Learner():
             nb_batches = [len(self.data.trn_dl)] * len(phases)
         else: nb_batches = [len(data.trn_dl) for data in data_list] 
         
-        self.sched = OptimScheduler(layer_opt, phases, nb_batches, stop_div)
+        self.sched = OptimScheduler(layer_opt, phases, nb_batches, stop)
         callbacks.append(self.sched)
         metrics = self.metrics
         

@@ -22,13 +22,12 @@ np.set_printoptions(precision=5, linewidth=110, suppress=True)
 
 # pytorch imports
 from distutils.version import LooseVersion
-import torch, torchvision, torchtext
+import torch, torchtext
 from torch import nn, cuda, backends, FloatTensor, LongTensor, optim
 import torch.nn.functional as F
 from torch.autograd import Variable
 from torch.utils.data import Dataset, TensorDataset
 from torch.nn.init import kaiming_uniform, kaiming_normal
-from torchvision.transforms import Compose
 
 import warnings
 warnings.filterwarnings('ignore', message='Implicit dimension choice', 

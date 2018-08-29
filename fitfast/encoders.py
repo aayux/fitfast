@@ -19,8 +19,8 @@ class AWDLSTMEncoder(nn.Module):
         - variational dropouts in the embedding and LSTM/QRNN layers
 
     The architecture for this network was inspired by the work done in 
-    "Regularizing and Optimizing LSTM Language Models".
-    (https://arxiv.org/pdf/1708.02182.pdf)
+    "Regularizing and Optimizing LSTM Language Models"
+    arxiv.org/abs/1708.02182
     """
 
     initrange = 0.1
@@ -122,11 +122,11 @@ class QRNNEncoder(nn.Module):
     A custom RNN encoder network that uses:
         - an embedding matrix to encode input,
         - a stack of LSTM or QRNN layers to drive the network, and
-        - variational dropouts in the embedding and LSTM/QRNN layers
+        - variational dropouts in the embedding and QRNN layers
 
     The architecture for this network was inspired by the work done in 
-    "Regularizing and Optimizing LSTM Language Models".
-    (https://arxiv.org/pdf/1708.02182.pdf)
+    "Quasi-Recurrent Neural Network"
+    arxiv.org/abs/1611.01576
     """
 
     initrange = 0.1
@@ -156,11 +156,10 @@ class QRNNEncoder(nn.Module):
         super().__init__()
         self.ndir = 2 if bidir else 1
         self.bs = 1
-        self.qrnn = qrnn
         self.encoder = nn.Embedding(ntoken, emb_sz, padding_idx=pad_token)
         self.encoder_with_dropout = EmbeddingDropout(self.encoder)
 
-        # Using QRNN requires cupy: https://github.com/cupy/cupy
+        # Using QRNN requires cupy: github.com/cupy/cupy
         from .torchqrnn.qrnn import QRNNLayer
         self.rnns = [QRNNLayer(emb_sz if l == 0 else n_hid, 
                     (n_hid if l != n_layers - 1 else emb_sz) // self.ndir, 

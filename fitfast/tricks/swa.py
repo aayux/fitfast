@@ -1,5 +1,5 @@
 import torch
-from ..callbacks import Callback
+from ..callback import Callback
 from ..utils.core import *
 
 

@@ -1,7 +1,7 @@
 from .imports import *
 from .utils.core import *
 from .utils.extras import *
-from .fit import *
+from .stepper import *
 from .dataset import *
 from .schedules import *
 from .layer_optimizer import *
@@ -23,12 +23,13 @@ class Learner():
             data (ModelData): An instance of ModelData.
             models(module): chosen neural architecture for solving a supported 
                     problem.
-            optimizer(function): Optimizer function, uses SGD with Momentum of 
+            optimizer(function): Optimizer function, uses SGD with momentum of 
                                 .9 if none is provided.
             metrics(list): Array of functions for evaluating a desired metric, 
                     for eg. accuracy.
             clip(float): Gradient clip chosen to limit the change in the 
-                    gradient to prevent exploding gradients Eg. .3
+                    gradient to prevent exploding gradients.
+            crit (function): The loss function used. Defaults to MSE Loss.
         """
         self.data = data
         self.models = models
@@ -49,7 +50,7 @@ class Learner():
 
     @classmethod
     def from_model_data(cls, m, data, **kwargs):
-        self = cls(data, BasicModel(to_gpu(m)), **kwargs)
+        self = cls(data, BaseModel(to_gpu(m)), **kwargs)
         self.unfreeze()
         return self
 
@@ -102,7 +103,7 @@ class Learner():
     def get_model_path(self, name): 
         return os.path.join(self.models_path,name) + '.h5'
     
-    def save(self, name): 
+    def save(self, name):
         save_model(self.model, self.get_model_path(name))
         if hasattr(self, 'swa_model'): 
             save_model(self.swa_model, 
@@ -227,30 +228,30 @@ class Learner():
 
         if use_clr is not None:
             clr_div, cut_div = use_clr[:2]
-            momentums = use_clr[2:] if len(use_clr) > 2 else None
+            momenta = use_clr[2:] if len(use_clr) > 2 else None
             cycle_end = self.get_cycle_end(cycle_save_name)
             assert cycle_len, 'use_clr requires cycle_len argument.'
             self.sched = CircularLearningRate(layer_opt, 
                                               len(data.trn_dl) * cycle_len, 
                                               on_cycle_end=cycle_end, 
                                               div=clr_div, cut_div=cut_div, 
-                                              momentums=momentums)
+                                              momenta=momenta)
         elif use_alt_clr is not None:
             div, ratio = use_alt_clr[:2]
-            momentums = use_alt_clr[2:] if len(use_alt_clr) > 3 else None
+            momenta = use_alt_clr[2:] if len(use_alt_clr) > 3 else None
             cycle_end = self.get_cycle_end(cycle_save_name)
             assert cycle_len, 'use_alt_clr requires cycle_len arg'
             self.sched = CircularLearningRateAlt(layer_opt, 
                                                  len(data.trn_dl) * cycle_len,
                                                  on_cycle_end=cycle_end, div=div, 
                                                  ratio=ratio, 
-                                                 momentums=momentums)
+                                                 momenta=momenta)
         elif cycle_len:
             cycle_end = self.get_cycle_end(cycle_save_name)
             cycle_batches = len(data.trn_dl) * cycle_len
-            self.sched = CosAnneal(layer_opt, cycle_batches, 
-                                   on_cycle_end=cycle_end, 
-                                   cycle_mult=cycle_mult)
+            self.sched = CosineAnnealing(layer_opt, cycle_batches, 
+                                         on_cycle_end=cycle_end, 
+                                         cycle_mult=cycle_mult)
         elif not self.sched: self.sched =  Recorder(layer_opt)
         callbacks += [self.sched]
 
@@ -316,7 +317,8 @@ class Learner():
 
     def warm_up(self, lr, wds=None):
         layer_opt = self.get_layer_opt(lr / 4, wds)
-        self.sched = LR_Finder(layer_opt, len(self.data.trn_dl), lr, linear=True)
+        self.sched = LearningRateFinder(layer_opt, len(self.data.train), lr, 
+                                        linear=True)
         return self.fit_gen(self.model, self.data, layer_opt, 1)
 
     def lr_find(self, start_lr=1e-5, end_lr=10, wds=None, linear=False, **kwargs):
@@ -351,7 +353,7 @@ class Learner():
         """
         self.save('tmp')
         layer_opt = self.get_layer_opt(start_lr, wds)
-        self.sched = LearningRateFinder(layer_opt, len(self.data.trn_dl), 
+        self.sched = LearningRateFinder(layer_opt, len(self.data.train), 
                                         end_lr, linear=linear)
         self.fit_gen(self.model, self.data, layer_opt, 1, **kwargs)
         self.load('tmp')
@@ -372,23 +374,24 @@ class Learner():
             end_lr (float): The maximum learning rate to try.
             num_it: The number of iterations you want it to run
             wds (iterable/float)
-            stop_dv : Stops (or not) when the losses starts to explode.
+            stop : Stops (or not) when the losses starts to explode.
         """
         self.save('tmp')
         layer_opt = self.get_layer_opt(start_lr, wds)
-        self.sched = LearningRateFinderAlt(layer_opt, num_it, end_lr, linear=linear, 
-                                metrics=self.metrics, stop=stop)
+        self.sched = LearningRateFinderAlt(layer_opt, num_it, end_lr, 
+                                           linear=linear, metrics=self.metrics, 
+                                           stop=stop)
         self.fit_gen(self.model, self.data, layer_opt, 
-                     num_it // len(self.data.trn_dl) + 1, all_val=True, **kwargs)
+                     num_it // len(self.data.train) + 1, all_val=True, **kwargs)
         self.load('tmp')
 
     def predict(self, is_test=False, use_swa=False):
-        dl = self.data.test_dl if is_test else self.data.val_dl
+        dl = self.data.test_dl if is_test else self.data.val
         m = self.swa_model if use_swa else self.model
         return predict(m, dl)
 
     def predict_with_targs(self, is_test=False, use_swa=False):
-        dl = self.data.test_dl if is_test else self.data.val_dl
+        dl = self.data.test_dl if is_test else self.data.val
         m = self.swa_model if use_swa else self.model
         return predict_with_targs(m, dl)
 
@@ -399,7 +402,7 @@ class Learner():
         Wraps the content of phases to send them to model.fit
 
         This will split the training in several parts, each with their own 
-        learning rates/wds/momentums/optimizer detailed in phases.
+        learning rates/wds/momenta/optimizer detailed in phases.
 
         Additionaly we can add a list of different data objets in data_list to 
         train on different datasets (to change the size for instance) for each 
@@ -434,7 +437,7 @@ class Learner():
         layer_opt = LayerOptimizer(phases[0].opt_fn, self.get_layer_groups(), 
                                    1e-2, phases[0].wds)
         if len(data_list) == 0: 
-            nb_batches = [len(self.data.trn_dl)] * len(phases)
+            nb_batches = [len(self.data.train)] * len(phases)
         else: nb_batches = [len(data.trn_dl) for data in data_list] 
         
         self.sched = OptimScheduler(layer_opt, phases, nb_batches, stop)

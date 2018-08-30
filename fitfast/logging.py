@@ -1,6 +1,6 @@
 from .imports import *
 from .layer_optimizer import *
-from .callbacks import Callback
+from .callback import Callback
 from timeit import default_timer as timer
 import copy
 
@@ -79,8 +79,6 @@ class EarlyStopping(Callback):
         print(f'Loading best model from {self.path}')
         self.learner.load(self.path)
 # TO DO: 
-# add_graph
-# add_embeddings
 # plot_lr
 # make_histograms
 class TensorBoard(Callback):
@@ -89,11 +87,13 @@ class TensorBoard(Callback):
         self.path = path
         self.writer = SummaryWriter(self.path)
     
-    def on_train_begin(self):
+    def on_train_begin(self, model):
         self.batch = 0
         self.epoch = 0
         self.phase = 0
-        # self.writer.add_graph(model, _)
+        # input = torch.autograd.Variable(torch.Tensor(<input-shape>), 
+        #                                 requires_grad=True))
+        # self.writer.add_graph(model, input)
     
     def on_batch_end(self, metrics):
         self.writer.add_scalar('train/loss', metrics, self.batch)
@@ -104,11 +104,12 @@ class TensorBoard(Callback):
         self.epoch += 1
 
     def on_train_end(self):
+        # map indexes to words
+        self.writer.add_embeddings(embeddings, metadata=words, tag='embeddings')
         self.writer.close()
 
 
 class SaveBestModel(Recorder):
-    
     r""" 
     Save weights of the best model based during training. If metrics are 
     provided, the first metric in the list is used to find the best model. If no

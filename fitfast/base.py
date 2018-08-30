@@ -1,7 +1,7 @@
 from ..utils.core import *
 
 class BaseModel():
-	r""" Base class that for extending all model classes.
+	r""" Base class for extending all model classes.
 	"""
     def __init__(self, model, name='base'): 
         self.model = model

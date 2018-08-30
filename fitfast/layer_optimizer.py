@@ -72,25 +72,20 @@ class LayerOptimizer(object):
         if type(self.opt) != type(optimizer(self.optimizer_params())):
             self.opt = optimizer(self.optimizer_params())
 
-def _zip_strict(l, r):
-    assert len(l) == len(r), \
-           f'size mismatch, expected {len(l)} r, but got {len(r)} r'
-    return zip(l, r)
+def _strict_zip(x, y):
+    assert len(x) == len(y), \
+        f'size mismatch, expected size {len(x)}, but got {len(x)} and {len(y)}'
+    return zip(x, y)
 
 def set_lrs(opt, lrs):
     lrs = listify(lrs, opt.param_groups)
-    for pg, lr in _zip_strict(opt.param_groups,lrs): pg['lr'] = lr
+    for pg, lr in _strict_zip(opt.param_groups, lrs): pg['lr'] = lr
 
 def set_wds_out(opt, wds):
     wds = listify(wds, opt.param_groups)
-    assert len(opt.param_groups) == len(wds), \
-    f'size mismatch, expected {len(opt.param_groups)} wds, but got {len(wds)}'
-    
-    for pg,wd in _zip_strict(opt.param_groups,wds): pg['wd'] = wd
+    for pg, wd in _strict_zip(opt.param_groups, wds): pg['wd'] = wd
 
 def set_wds(opt, wds):
     wds = listify(wds, opt.param_groups)
-    assert len(opt.param_groups) == len(wds), \
-    f'size mismatch, expected {len(opt.param_groups)} wds, but got {len(wds)}'
-    for pg,wd in _zip_strict(opt.param_groups,wds): pg['wd'] = wd
+    for pg, wd in _strict_zip(opt.param_groups, wds): pg['wd'] = wd
 

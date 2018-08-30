@@ -10,17 +10,17 @@ class LoggingCallback(Callback):
     Class for maintaining status of a long-running job.
 
     Example usage:
-    >>> learn.fit(0.01, 1, callbacks=[LoggingCallback(save_path='./logs')])
+    >>> learn.fit(0.01, 1, callbacks=[LoggingCallback(path='./logs')])
     """
-    def __init__(self, save_path):
+    def __init__(self, path):
         super().__init__()
-        self.save_path = save_path
+        self.path = path
     
     def on_train_begin(self):
         self.batch = 0
         self.epoch = 0
         self.phase = 0
-        self.f = open(self.save_path, 'a', 1)
+        self.f = open(self.path, 'a', 1)
         self.log(f'\ton_train_begin')
     
     def on_batch_begin(self):
@@ -48,11 +48,64 @@ class LoggingCallback(Callback):
     def log(self, message):
         self.f.write(f'{time.strftime("%Y-%m-%dT%H:%M:%S")}\t{message}\n')
 
-class TensorBoard(Callback):
-    # TO DO: implement this
-    def __init__(self):
+class EarlyStopping(Callback):
+    def __init__(self, learner, path, enc_path=None, patience=5):
         super().__init__()
-        return
+        self.learner = learner
+        self.path = path
+        self.enc_path = enc_path
+        self.patience = patience
+    
+    def on_train_begin(self):
+        self.best_val_loss = 100
+        self.no_improvement = 0
+    
+    def on_epoch_end(self, metrics):
+        val_loss = metrics[0]
+        if val_loss < self.best_val_loss:
+            self.best_val_loss = val_loss
+            self.no_improvement = 0
+            self.learner.save(self.path)
+            if self.enc_path is not None:
+                self.learner.save_encoder(self.enc_path)
+        else:
+            self.no_improvement += 1
+        
+        if self.no_improvement > self.patience:
+            print(f'Stopping. No improvement after {self.patience + 1} epochs.')
+            return True
+    
+    def on_train_end(self):
+        print(f'Loading best model from {self.path}')
+        self.learner.load(self.path)
+# TO DO: 
+# add_graph
+# add_embeddings
+# plot_lr
+# make_histograms
+class TensorBoard(Callback):
+    def __init__(self, path):
+        super().__init__()
+        self.path = path
+        self.writer = SummaryWriter(self.path)
+    
+    def on_train_begin(self):
+        self.batch = 0
+        self.epoch = 0
+        self.phase = 0
+        # self.writer.add_graph(model, _)
+    
+    def on_batch_end(self, metrics):
+        self.writer.add_scalar('train/loss', metrics, self.batch)
+        self.batch += 1
+
+    def on_epoch_end(self, metrics):
+        self.writer.add_scalar('validation/loss', metrics[0], self.batch)
+        self.epoch += 1
+
+    def on_train_end(self):
+        self.writer.close()
+
 
 class SaveBestModel(Recorder):
     

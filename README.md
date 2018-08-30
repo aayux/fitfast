@@ -1,7 +1,9 @@
 # [WIP] FitFast
 
-Currently a stripped down version of fastai for NLP tasks. Built using fastai library by J. Howard.
+## Quickly fine-tune language models for your downstream NLP tasks.
 
-Contact: Aayush Yadav
+Source: [fastai/fastai](https://github.com/fastai/fastai)
 
-aayush@paralleldots.com
+Contact: Aayush Yadav ([dust0x](https://github.com/dust0x))
+
+<aayush@paralleldots.com>

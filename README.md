@@ -4,6 +4,4 @@
 
 Source: [fastai/fastai](https://github.com/fastai/fastai)
 
-Contact: Aayush Yadav ([dust0x](https://github.com/dust0x))
-
-<aayush@paralleldots.com>
+Contact: Aayush Yadav; [dust0x](https://github.com/dust0x)

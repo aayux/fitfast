@@ -1,13 +1,13 @@
 import torch
 import fitfast as ff
-from fitfast.lm import AWDLSTMModeler
+from fitfast.lm import LSTMModeler
 from fitfast.utils.data import load_csv, train_split
 
 def main():
     corpus = load_csv('data.csv', lang='en')
     train, val = train_split(corpus)
     
-    lm = AWDLSTMModeler()
+    lm = LSTMModeler()
     loader = ff.Loader(train, val)
     learner = loader.get_model(lm)
     

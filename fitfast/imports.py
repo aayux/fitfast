@@ -35,8 +35,6 @@ warnings.filterwarnings('ignore', message='Implicit dimension choice',
                          category=UserWarning)
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')
-TMP_DIR = 'tmp'
-MODELS_DIR = 'models'
 
 if IS_TORCH_04:
     from torch.nn.init import kaiming_uniform_ as kaiming_uniform

@@ -2,6 +2,8 @@ from ..imports import *
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')
 USE_GPU = torch.cuda.is_available()
+TMP_DIR = './data/tmp'
+MODELS_DIR = './data/models'
 
 def no_op(*args, **kwargs): return
 

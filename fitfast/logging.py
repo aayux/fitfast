@@ -49,11 +49,11 @@ class LoggingCallback(Callback):
         self.f.write(f'{time.strftime("%Y-%m-%dT%H:%M:%S")}\t{message}\n')
 
 class EarlyStopping(Callback):
-    def __init__(self, learner, path, enc_path=None, patience=5):
+    def __init__(self, learner, wd, save_as, patience=5):
         super().__init__()
         self.learner = learner
         self.path = path
-        self.enc_path = enc_path
+        self.save_as = save_as
         self.patience = patience
     
     def on_train_begin(self):
@@ -65,9 +65,7 @@ class EarlyStopping(Callback):
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             self.no_improvement = 0
-            self.learner.save(self.path)
-            if self.enc_path is not None:
-                self.learner.save_encoder(self.enc_path)
+            self.learner.save(self.path, self.save_as)
         else:
             self.no_improvement += 1
         
@@ -76,8 +74,9 @@ class EarlyStopping(Callback):
             return True
     
     def on_train_end(self):
-        print(f'Loading best model from {self.path}')
-        self.learner.load(self.path)
+        print(f'Best model saved in {self.path}')
+        return True
+
 # TO DO: 
 # plot_lr
 # make_histograms

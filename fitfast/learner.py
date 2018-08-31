@@ -13,14 +13,13 @@ import time
 
 
 class Learner():
-    def __init__(self, data, models, optimizer=None, metrics=None, clip=None, 
-                 crit=None):
+    def __init__(self, data, models, **kwargs):
         r"""
-        Combines a ModelData object with a nn.Module object, such that you can 
+        Combines a LanguageModelLoader object with a nn.Module object, such that you can 
         train that module.
         
         Args:
-            data (ModelData): An instance of ModelData.
+            data (LanguageModelLoader): An instance of LanguageModelLoader.
             models(module): chosen neural architecture for solving a supported 
                     problem.
             optimizer(function): Optimizer function, uses SGD with momentum of 
@@ -33,20 +32,18 @@ class Learner():
         """
         self.data = data
         self.models = models
-        self.metrics = metrics
         self.sched = None
         self.wd_sched = None
-        self.clip = clip
-        self.optimizer = optimizer or sgd_with_momentum()
-        self.tmp_path = TMP_DIR if os.path.isabs(TMP_DIR) \
-                                 else os.path.join(self.data.path, TMP_DIR)
-        self.models_path = MODELS_DIR if os.path.isabs(MODELS_DIR) \
-                                 else os.path.join(self.data.path, MODELS_DIR)
-        os.makedirs(self.tmp_path, exist_ok=True)
-        os.makedirs(self.models_path, exist_ok=True)
-        self.crit = crit if crit else self._get_crit(data)
-        self.regularizer = None
         self.fp16 = False
+
+    def compile(self, lparams, optimizer=None, regularizer=None, metrics=None, 
+                crit=None, callbacks=None):
+        self.lparams = lparams
+        self.optimizer = optimizer or sgd_with_momentum()
+        self.regularizer = regularizer
+        self.metrics = metrics
+        self.crit = crit if crit else self._get_crit(self.data)
+        self.callbacks = callbacks if callbacks else []
 
     @classmethod
     def from_model_data(cls, m, data, **kwargs):
@@ -101,29 +98,20 @@ class Learner():
     def unfreeze(self): self.freeze_to(0)
 
     def get_model_path(self, name): 
-        return os.path.join(self.models_path,name) + '.h5'
+        return os.path.join(self.models_path, name) + '.h5'
     
-    def save(self, name):
+    def save(self, wd, name):
+        self.models_path = os.path.join(wd, MODELS_DIR)
+        os.makedirs(models_path, exist_ok=True)
         save_model(self.model, self.get_model_path(name))
         if hasattr(self, 'swa_model'): 
             save_model(self.swa_model, 
                        self.get_model_path(name)[:-3] + '_swa.h5')
                        
-    def load(self, name): 
-        load_model(self.model, self.get_model_path(name))
-        if hasattr(self, 'swa_model'): 
-            load_model(self.swa_model, 
-                       self.get_model_path(name)[:-3] + '_swa.h5')
+    def load(self, path): 
+        load_model(self.model, path)
 
     def set_data(self, data): self.data = data
-
-    def get_cycle_end(self, name):
-        if name is None: return None
-        return lambda sched, cycle: self.save_cycle(name, cycle)
-
-    def save_cycle(self, name, cycle): self.save(f'{name}_cyc_{cycle}')
-    
-    def load_cycle(self, name, cycle): self.load(f'{name}_cyc_{cycle}')
 
     def half(self):
         if self.fp16: return
@@ -135,12 +123,8 @@ class Learner():
         self.fp16 = False
         if type(self.model) == FP16: self.models.model = self.model.module
         self.model.float()
-
-    def fit_gen(self, model, data, layer_opt, n_cycle, cycle_len=None, 
-                cycle_mult=1, cycle_save_name=None, best_save_name=None, 
-                use_clr=None, use_alt_clr=None, metrics=None, callbacks=None, 
-                use_wd_sched=False, norm_wds=False, wds_sched_mult=None, 
-                use_swa=False, swa_start=1, swa_eval_freq=5, **kwargs):
+    
+    def _fit(self, model, data, layer_opt, save_best_model=False, **kwargs):
 
         r"""
         Method does some preparation before finally delegating to the 'fit' 
@@ -151,126 +135,86 @@ class Learner():
         Method also computes the total number of epochs to fit based on provided
         'cycle_len', 'cycle_mult', and 'n_cycle' parameters.
 
-        Args:
+        Arguments:
             model (Learner): Any neural architecture for solving a supported 
                     problem, eg. RNNLearner etc.
             data (ModelData): An instance of ModelData.
             layer_opt (LayerOptimizer): An instance of the LayerOptimizer class.
-            n_cycle (int): Number of cycles.
-            cycle_len (int): Number of cycles before lr is reset to the initial
-                    value, eg. if cycle_len = 3, then the lr is varied between a 
-                    maximum and minimum value over 3 epochs.
-            cycle_mult (int): Additional parameter for influencing how the lr 
-                    resets over the cycles. For an intuitive explanation.
-            cycle_save_name (str): Use to save the weights at end of each cycle 
-                    (requires use_clr, use_alt_clr or cycle_len).
-            best_save_name (str): Use to save weights of best model during 
+            save_best_model (bool): Use to save weights of best model during 
                     training.
             metrics (function): Some function for evaluating a desired metric, 
                     eg. accuracy.
             callbacks (list(Callback)): Callbacks to apply during the training.
-            use_wd_sched (bool, optional): set to True to enable weight 
-                    regularization using the technique mentioned in 
-                    arxiv.org/abs/1711.05101. When this is True by itself the 
-                    regularization is detached from gradient update and applied 
-                    directly to the weights.
-            norm_wds (bool, optional): when this is set to True along with 
-                    use_wd_sched, the regularization factor is normalized with 
-                    each training cycle.
-            wds_sched_mult (function, optional): when this is provided along 
-                    with use_wd_sched as True, the value computed by this 
-                    function is multiplied with the regularization strength. 
-                    This function is passed the WeightDecaySchedule object. And 
-                    example function that can be passed is:
-                    f = lambda x: np.array(x.layer_opt.lrs) / x.init_lrs
-            use_swa (bool, optional): when this is set to True, it will enable 
-                    the use of Stochastic Weight Averaging 
-                    arxiv.org/abs/1803.05407. The learner will include an 
-                    additional model (in the swa_model attribute) for keeping 
-                    track of the average weights as described in the paper. All 
-                    testing of this technique so far has been in image 
-                    classification, so use in other contexts is not guaranteed 
-                    to work.
-            swa_start (int, optional): if use_swa is set to True, then this 
-                    determines the epoch to start keeping track of the average 
-                    weights. It is 1-indexed per the paper's conventions.
-            swa_eval_freq (int, optional): if use_swa is set to True, this 
-                    determines the frequency at which to evaluate the 
-                    performance of the swa_model. This evaluation can be costly 
-                    for models using BatchNorm (requiring a full pass through 
-                    the data), which is why the default is not to evaluate after
-                    each epoch.
 
         Returns: None
         """
 
-        if cycle_save_name:
-            assert use_clr or use_alt_clr or cycle_len, \
-            (f'cycle_save_name argument requires either of the following '
-             f'arguments use_clr, use_alt_clr, cycle_len.')
+        cl = self.lparams.cycle_len
 
-        if callbacks is None: callbacks = []
-        if metrics is None: metrics = self.metrics
-
-        if use_wd_sched:
-            # This needs to come before CosAnneal() because we need to read the 
-            # initial learning rate from layer_opt.lrs, but CosAnneal() alters 
-            # the layer_opt.lrs value initially (divides by 100)
+        if self.lparams.use_wd_sched:
+            # This needs to come before CosineAnnealing() because we need to 
+            # read the initial learning rate from layer_opt.lrs, 
+            # but CosineAnnealing() alters the layer_opt.lrs value initially 
+            # (divides by 100)
             if np.sum(layer_opt.wds) == 0:
                 print(f'fit() warning: use_wd_sched is set to True, but weight '
                 f'decay(s) passed are 0. Use wds to pass weight decay values.')
-            n_batches = len(data.trn_dl)
-            cl = cycle_len if cycle_len else 1
+            n_batches = len(data.train)
             self.wd_sched = WeightDecaySchedule(layer_opt, n_batches, cl, 
-                                                cycle_mult, n_cycle, norm_wds, 
-                                                wds_sched_mult)
-            callbacks += [self.wd_sched]
+                                                self.lparams.cycle_mult, 
+                                                self.lparams.n_cycles, 
+                                                self.lparams.norm_wds, 
+                                                self.lparams.wds_sched_mult)
+            self.callbacks += [self.wd_sched]
 
-        if use_clr is not None:
-            clr_div, cut_div = use_clr[:2]
+        if laprams.use_clr is not None:
+            clr_div, cut_div = self.lparams.use_clr[:2]
             momenta = use_clr[2:] if len(use_clr) > 2 else None
-            cycle_end = self.get_cycle_end(cycle_save_name)
-            assert cycle_len, 'use_clr requires cycle_len argument.'
+            cycle_end = None
+            assert cl, 'use_clr requires cycle_len argument.'
             self.sched = CircularLearningRate(layer_opt, 
-                                              len(data.trn_dl) * cycle_len, 
+                                              len(data.train) * cl, 
                                               on_cycle_end=cycle_end, 
                                               div=clr_div, cut_div=cut_div, 
                                               momenta=momenta)
-        elif use_alt_clr is not None:
-            div, ratio = use_alt_clr[:2]
-            momenta = use_alt_clr[2:] if len(use_alt_clr) > 3 else None
-            cycle_end = self.get_cycle_end(cycle_save_name)
-            assert cycle_len, 'use_alt_clr requires cycle_len arg'
+        elif self.lparams.use_alt_clr is not None:
+            div, ratio = self.lparams.use_alt_clr[:2]
+            momenta = self.lparams.use_alt_clr[2:] \
+                      if len(self.lparams.use_alt_clr) > 3 else None
+            cycle_end = None
+            assert cl, 'use_alt_clr requires the parameter cycle_len'
             self.sched = CircularLearningRateAlt(layer_opt, 
-                                                 len(data.trn_dl) * cycle_len,
+                                                 len(data.train) * cl,
                                                  on_cycle_end=cycle_end, div=div, 
                                                  ratio=ratio, 
                                                  momenta=momenta)
-        elif cycle_len:
-            cycle_end = self.get_cycle_end(cycle_save_name)
-            cycle_batches = len(data.trn_dl) * cycle_len
+        elif self.lparams.cycle_len:
+            cycle_end = None
+            cycle_batches = len(data.train) * cl
             self.sched = CosineAnnealing(layer_opt, cycle_batches, 
                                          on_cycle_end=cycle_end, 
-                                         cycle_mult=cycle_mult)
+                                         cycle_mult=self.lparams.cycle_mult)
         elif not self.sched: self.sched =  Recorder(layer_opt)
-        callbacks += [self.sched]
+        self.callbacks += [self.sched]
 
-        if best_save_name is not None:
-            callbacks += [SaveBestModel(self, layer_opt, metrics, 
-                                        best_save_name)]
+        if save_best_model:
+            self.callbacks += [SaveBestModel(self, layer_opt, self.metrics)]
 
-        if use_swa:
+        if self.lparams.use_swa:
             # make a copy of the model to track average weights
             self.swa_model = copy.deepcopy(model)
-            callbacks += [SWA(model, self.swa_model, swa_start)]
+            self.callbacks += [SWA(model, self.swa_model, swa_start)]
 
-        n_epoch = int(gp_sum(cycle_len if cycle_len else 1, cycle_mult, n_cycle))
+        n_epochs = int(gp_sum(cl if cl else 1, 
+                             self.lparams.cycle_mult, self.lparams.n_cycle))
         
-        return fit(model, data, n_epoch, layer_opt.opt, self.crit, 
-                   metrics=metrics, callbacks=callbacks, 
-                   regularizer=self.regularizer, clip=self.clip, fp16=self.fp16, 
-                   swa_model=self.swa_model if use_swa else None, 
-                   swa_start=swa_start, swa_eval_freq=swa_eval_freq, **kwargs)
+        return fit(model, data, n_epochs, layer_opt.opt, self.crit, 
+                   metrics=self.metrics, callbacks=self.callbacks, 
+                   regularizer=self.regularizer, clip=self.lparams.clip, 
+                   fp16=self.fp16, 
+                   swa_model=self.swa_model if self.lparams.use_swa else None, 
+                   swa_start=self.lparams.swa_start, 
+                   swa_eval_freq=self.lparams.swa_eval_freq, **kwargs)
 
     def get_layer_groups(self): return self.models.get_layer_groups()
 
@@ -288,7 +232,7 @@ class Learner():
         """
         return LayerOptimizer(self.opt_fn, self.get_layer_groups(), lrs, wds)
 
-    def fit(self, lrs, n_cycle, wds=None, **kwargs):
+    def fit(self, **kwargs):
 
         r"""
         Method gets an instance of LayerOptimizer and delegates to self.fit_gen.
@@ -312,8 +256,8 @@ class Learner():
         Returns: None
         """
         self.sched = None
-        layer_opt = self.get_layer_opt(lrs, wds)
-        return self.fit_gen(self.model, self.data, layer_opt, n_cycle, **kwargs)
+        layer_opt = self.get_layer_opt(self.lparams.lrs, self.lparams.wds)
+        return self._fit(self.model, self.data, layer_opt, **kwargs)
 
     def warm_up(self, lr, wds=None):
         layer_opt = self.get_layer_opt(lr / 4, wds)

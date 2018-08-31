@@ -25,7 +25,7 @@ class AWDLSTMEncoder(nn.Module):
 
     initrange = 0.1
 
-    def __init__(self, ntoken, emb_sz, n_hid, n_layers, pad_token, bidir=False,
+    def __init__(self, n_tokens, em, nh, nl, pad_token, bidir=False,
                  dropouth=0.3, dropouti=0.65, dropoute=0.1, wdrop=0.5):
         r""" 
         Default constructor for the RNNEncoder class

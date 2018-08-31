@@ -115,10 +115,16 @@ class RNNLearner(Learner):
     def fit(self, *args, **kwargs): 
         return super().fit(*args, **kwargs, seq_first=True)
 
-    def save_encoder(self, name): 
+    def get_model_path(self, name): 
+        return os.path.join(self.models_path, name) + '.h5'
+    
+    def save_encoder(self, wd, name): 
+        self.models_path = os.path.join(wd, MODELS_DIR)
+        os.makedirs(models_path, exist_ok=True)
         save_model(self.model[0], self.get_model_path(name))
     
-    def load_encoder(self, name): 
+    def load_encoder(self, name):
+        self.models_path = os.path.join(wd, MODELS_DIR)
         load_model(self.model[0], self.get_model_path(name))
 
 

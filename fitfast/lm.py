@@ -37,8 +37,8 @@ class LanguageModeler(object):
     def get_language_model(self): pass
 
 class LSTMModeler(LanguageModeler):
-    def get_language_model(self, n_tokens, em, nh, nl, pad_token, dropout=0.4, 
-                           dropouth=0.3, dropouti=0.5, dropoute=0.1, wdrop=0.5, 
+    def get_language_model(self, n_tokens, em, nh, nl, pad_token, drop_i=.6, 
+                           drop_e=.1, drop_h=.2, drop_d=.5, w_drop=.4, 
                            tie_weights=True, bias=False):
         r"""
         Returns a SequentialRNN language model.
@@ -57,12 +57,12 @@ class LSTMModeler(LanguageModeler):
             nh (int): number of hidden activation per LSTM layer.
             nl (int): number of LSTM layers to use in the architecture.
             pad_token (int): the int value used for padding text.
-            dropouth (float): dropout to apply to the linear decoder.
-            dropouth (float): dropout to apply to the activations going from one 
+            drop_i (float): dropout to apply to the input layer.
+            drop_e (float): dropout to apply to the embedding layer.
+            drop_h (float): dropout to apply to the activations going from one 
                     LSTM layer to another.
-            dropouti (float): dropout to apply to the input layer.
-            dropoute (float): dropout to apply to the embedding layer.
-            wdrop (float): dropout used for a LSTM's internal (or hidden) 
+            drop_d (float): dropout to apply to the linear decoder.
+            w_drop (float): dropout used for a LSTM's internal (or hidden) 
                     recurrent weights.
             tie_weights (bool): decide if the weights of the embedding matrix in 
                     the RNN encoder should be tied to the weights of the 
@@ -72,12 +72,11 @@ class LSTMModeler(LanguageModeler):
         Returns: A SequentialRNN model
         """
         rnn_encoder = AWDLSTMEncoder(n_tokens, em, nh=nh, nl=nl, 
-                                     pad_token=pad_token, dropouth=dropouth, 
-                                     dropouti=dropouti, dropoute=dropoute, 
-                                     wdrop=wdrop)
+                                     pad_token=pad_token, drop_i=drop_i, 
+                                     drop_e=drop_e, drop_h=drop_h, w_drop=w_drop)
         tie_encoder = rnn_encoder.encoder if tie_weights else None
-        decoder = LinearDecoder(n_tokens, em, dropout, 
-                                tie_encoder=tie_encoder, bias=bias)
+        decoder = LinearDecoder(n_tokens, em, drop_d, tie_encoder=tie_encoder, 
+                                bias=bias)
         return SequentialRNN(rnn_encoder, decoder)
 
 

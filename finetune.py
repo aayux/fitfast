@@ -1,42 +1,34 @@
 import torch
 
-import fitfast as ff
+import fitfast.trainer as ff
 from fitfast.lm import LSTMModeler
-from fitfast.data_utils import load_csv, train_split
+from fitfast.utils.preprocessing import Preprocess
 
 CUDA_ID = 0
 
 def main():
     work_dir = './data/example'
-    corpus, itos = load_csv(work_dir, 'data.csv', lang='en')
-    train, val = train_split(corpus)
+    pp = Preprocess(lang='en')
+    
+    train, val = pp.load(work_dir, 'data.csv')
+    itos = pp.vocabulary()
     
     # instantiate the language model object
     lm = LSTMModeler()
 
     # call the model loader class
-    loader = ff.Loader(train, val, lang=lang, bs=64, bptt=60)
-    
-    # input dropout
-    drop_i = .6
-    
-    # embedding dropout
-    drop_e = .1
-    
-    # activation dropout
-    drop_h = .2
-    
-    # decoder dropout
-    drop_d = .5
-    
-    # weight dropout
-    w_drop = .4
+    loader = ff.Loader(train, val, lang='en', bs=64, bptt=60)
 
     # TO DO: IMRPOVE DROPOUT PARAMETRIZATION
     # FIX CALL ON EVAL/TEST
+    dropouts = {'drop_i': .6, 
+                'drop_e': .1, 
+                'drop_h': .2, 
+                'drop_d': .5, 
+                'w_drop': .4}
 
     # fetch the model/learner with the Loader object
-    learner = loader.get_model(lm, itos, finetune=True)
+    learner = loader.get_model(lm, itos, finetune=True, **dropouts)
     
     # define the optimizer as a partial
     optimizer = partial(optim.Adam, betas=(0.8, 0.99))

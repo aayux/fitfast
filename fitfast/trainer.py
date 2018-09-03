@@ -1,4 +1,4 @@
-from fitfast.text import *
+from .text import *
 
 class LearningParameters(object):
     r"""

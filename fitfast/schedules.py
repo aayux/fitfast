@@ -1,4 +1,5 @@
 from .imports import *
+from .callback import Callback
 from .layer_optimizer import *
 from .utils.extras import draw_line, draw_text, curve_smoothing
 from enum import IntEnum
@@ -494,7 +495,7 @@ class OptimScheduler(Recorder):
             plt.savefig(os.path.join(self.save_path, 'learning_rate.png'))
     
     def plot(self, n_skip=10, n_skip_end=5, linear=None):
-        if linear is None: linear = self.phases[-1].lr_decay == DecayType.LINEAR
+        if linear is None: linear = self.phases[-1].lr_decay == RateDecayType.LINEAR
         plt.ylabel('loss')
         plt.plot(self.lrs[n_skip : -n_skip_end], 
                  self.losses[n_skip : -n_skip_end])
@@ -510,8 +511,8 @@ class TrainingPhase(object):
     involved during training. Used by fit_opt_sched in learner.py
     """
     def __init__(self, epochs=1, optimizer=optim.SGD, lr=1e-2, momentum=0.9,
-                 beta=None, wds=None, wd_loss=True, lr_decay=DecayType.NO, 
-                 momentum_decay=DecayType.NO,):
+                 beta=None, wds=None, wd_loss=True, lr_decay=RateDecayType.NO, 
+                 momentum_decay=RateDecayType.NO,):
         r"""
         Creates an object containing all the relevant informations for one part 
         of a model training.
@@ -522,11 +523,11 @@ class TrainingPhase(object):
             lr: One learning rate or a tuple of the form (start_lr,end_lr) each 
                     of those can be a list/numpy array for differential learning 
                     rates.
-            lr_decay: A DecayType object specifying how the learning rate should
+            lr_decay: A RateDecayType object specifying how the learning rate should
                     change.
             momentum: One momentum (or beta1 in case of Adam), or a tuple of the
                     form (start, end).
-            momentum_decay: A DecayType object specifying how the momentum 
+            momentum_decay: A RateDecayType object specifying how the momentum 
                     should change.
             beta: beta2 parameter in Adam or alpha parameter in RMSProp.
             wds: Weight decay (can be an array for differential wds).

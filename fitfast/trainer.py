@@ -63,7 +63,7 @@ class LearningParameters(object):
 
 class Loader(LanguageModelLoader):
     def __init__(self, train_ids, val_ids, lang, bs, bptt, n_tokens=3000, 
-                 pad_tokens=1, em=300, nh=1000, nl=3, **kwargs):
+                 pad_token=1, em=300, nh=1000, nl=3, **kwargs):
         self.train = LanguageModelIterator(train_ids, bs, bptt)
         self.val = LanguageModelIterator(val_ids, bs, bptt)
         self.pad_token = pad_token
@@ -79,12 +79,12 @@ class Loader(LanguageModelLoader):
         model = LanguageModel(to_gpu(m))
         learner = RNNLearner(self, model)
         if finetune:
-            return load_pretrained_weights(learner, itos)
+            return self.load_pretrained_weights(learner, itos)
         else:
             return learner
 
-    def load_pretrained_weights(l, itos):
-        data_dir = Path('./data')
+    def load_pretrained_weights(self, l, itos):
+        data_dir = Path('./data/wiki')
         pre_dir = data_dir / self.lang
         
         w = torch.load(pre_dir / 'models' / 'wikitext.h5', 

@@ -66,10 +66,10 @@ class LanguageModelLoader(object):
     """
     def __init__(self, train, val, n_tokens, pad_token, test=None, 
                  **kwargs):
-            r""" 
-            Constructor for the class. Three instances of the LanguageModel are 
-            constructed, one each for training, validation data and the test 
-            datasets.
+        r""" 
+        Constructor for the class. Three instances of the LanguageModel are 
+        constructed, one each for training, validation data and the test 
+        datasets.
             
             Arguments:
                 train (LanguageModelLoader): Training data.
@@ -91,7 +91,7 @@ class LanguageModelLoader(object):
         r"""
         Method returns a RNNLearner object, that wraps an instance of the 
         RNNEncoder module.
-        Args:
+        Arguments:
             optimizer (Optimizer): the torch optimizer function to use
             em (int): embedding size
             nh (int): number of hidden inputs

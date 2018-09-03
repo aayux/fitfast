@@ -95,41 +95,40 @@ class Preprocess(object):
             print(f'Command: python -m spacy download {self.lang}')
             sys.exit(1)
 
-    def _make_token(self, rows):
-        if len(rows) == 1:
+    def _make_token(self, df):
+        if len(df.columns) == 1:
             labels = []
-            texts = f'\n{BOS} {FLD} 0 ' + rows[0].astype(str)
+            texts = f'\n{BOS} {FLD} 0 ' + df[0].astype(str)
         else:
-            labels = rows.iloc[:, 0].values.astype(np.int64)
-            texts = f'\n{BOS} {FLD} 0 ' + row[1].astype(str)
-            # for i in range(n_lbls + 1, len(row.columns)):
-            #     texts += f' {FLD} {i-n_lbls} ' + row[i].astype(str)
-        texts = list(fixup(texts))
+            labels = df.iloc[:, 0].values.astype(np.int64)
+            texts = f'\n{BOS} {FLD} 0 ' + df[1].astype(str)
+            # for i in range(n_lbls + 1, len(df.columns)):
+            #     texts += f' {FLD} {i-n_lbls} ' + df[i].astype(str)
+        texts = list(texts.apply(fixup).values)
         tokens = Tokenizer(lang=self.lang).proc_all_mp(partition_by_cores(texts), 
                                                                  lang=self.lang)
         return tokens, list(labels)
 
 
-    def _get_tokens(self, df):
+    def _get_tokens(self, reader):
         tokens, labels = [], []
-        for _, rows in enumerate(df):
-            tokens_, labels_ = self._make_token(rows)
+        for _, df in enumerate(reader):
+            tokens_, labels_ = self._make_token(df)
             tokens += tokens_
             labels += labels_
-            return tokens, labels
+        return tokens, labels
 
 
     def tok2id(self, max_vocab=30000, min_freq=1):
-        train_tok = np.load(self.tmp / 'tok_trn.npy')
+        train_tok = np.load(self.tmp / 'tok_train.npy')
         val_tok = np.load(self.tmp / 'tok_val.npy')
 
         freq = Counter(p for o in train_tok for p in o)
-        print(freq.most_common(25))
         self.itos = [o for o, c in freq.most_common(max_vocab) if c > min_freq]
         self.itos.insert(0, '_pad_')
         self.itos.insert(0, '_unk_')
         stoi = collections.defaultdict(lambda: 0, 
-                                       {v:k for k,v in enumerate(itos)})
+                                       {v: k for k, v in enumerate(self.itos)})
 
         train_ids = np.array([[stoi[o] for o in p] for p in train_tok])
         val_ids = np.array([[stoi[o] for o in p] for p in val_tok])
@@ -146,13 +145,14 @@ class Preprocess(object):
         #     np.save(tmp_path / 'val_ids_bwd.npy', val_bwd_ids)
 
         pickle.dump(self.itos, open(self.tmp / 'itos.pkl', 'wb'))
-        return train_ids, val_ids
+        return np.concatenate(train_ids), np.concatenate(val_ids)
 
     def tokenize(self, file, chunksize=24000):
-        df = pd.read_csv(self.wd / f'{file}.csv', header=0, chunksize=chunksize)
-        tokens, labels = self._get_tokens(df)
+        reader = pd.read_csv(self.wd / f'{file}.csv', header=None, 
+                             chunksize=chunksize)
+        tokens, labels = self._get_tokens(reader)
         np.save(self.tmp / f'tok_{file}.npy', tokens)
-        if len(df.columns) > 1: 
+        if len(labels): 
             np.save(self.tmp / f'lbl_{file}.npy', labels)
         return tokens
 
@@ -160,7 +160,7 @@ class Preprocess(object):
     def load(self, wd, file, split=.9):
         self.wd = Path(wd)
         self.file = self.wd / file
-        assert self.file.exists(), f'Error: {self.file} does not exist.'
+        assert self.file.exists(), f'{self.file} does not exist.'
 
         # create/check a temporary directory
         self.tmp = self.wd / 'tmp'
@@ -175,10 +175,8 @@ class Preprocess(object):
         train, val = self.split_train_val(df, split)
 
         if len(df.columns) > 1:
-            train.to_csv(self.wd / 'train.csv', index=False, 
-                         columns=['label', 'text'])
-            val.to_csv(self.wd / 'val.csv', index=False, 
-                         columns=['label', 'text'])
+            train.to_csv(self.wd / 'train.csv', index=False, header=False)
+            val.to_csv(self.wd / 'val.csv', index=False, header=False)
         else:
             train.to_csv(self.wd / 'train.csv', index=False, columns=['text'])
             val.to_csv(self.wd / 'val.csv', index=False, columns=['text'])
@@ -189,7 +187,7 @@ class Preprocess(object):
         self.tokenize('val')
 
         joined = [' '.join(o) for o in tokens]
-        open(tmp / 'joined.txt', 'w', encoding='utf-8').writelines(joined)
+        open(self.tmp / 'joined.txt', 'w', encoding='utf-8').writelines(joined)
 
         return self.tok2id(max_vocab=30000, min_freq=1)
 

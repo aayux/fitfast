@@ -1,5 +1,6 @@
 import torch
 
+import numpy as np
 import fitfast.trainer as ff
 from fitfast.lm import LSTMModeler
 from fitfast.utils.preprocessing import Preprocess
@@ -53,6 +54,8 @@ def main():
     # save the language model and encoder
     learner.save(work_dir, 'example')
     learner.save_encoder(work_dir, 'example_encoder')
+
+    return True
 
 if __name__ == '__main__': 
 

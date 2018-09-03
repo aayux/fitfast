@@ -1,4 +1,5 @@
 from .imports import *
+from .schedules import Recorder
 from .layer_optimizer import *
 from .callback import Callback
 from timeit import default_timer as timer

@@ -1,5 +1,6 @@
 from .imports import *
 from .encoders import AWDLSTMEncoder, QRNNEncoder
+from .tricks.dropout import LockedDropout
 
 class SequentialRNN(nn.Sequential):
     r"""
@@ -13,9 +14,9 @@ class SequentialRNN(nn.Sequential):
 
 class LinearDecoder(nn.Module):
     initrange = 0.1
-    def __init__(self, n_out, n_hid, dropout, tie_encoder=None, bias=False):
+    def __init__(self, no, nh, dropout, tie_encoder=None, bias=False):
         super().__init__()
-        self.decoder = nn.Linear(n_hid, n_out, bias=bias)
+        self.decoder = nn.Linear(nh, no, bias=bias)
         self.decoder.weight.data.uniform_(-self.initrange, self.initrange)
         self.dropout = LockedDropout(dropout)
         if bias: self.decoder.bias.data.zero_()

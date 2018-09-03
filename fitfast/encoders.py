@@ -55,7 +55,7 @@ class AWDLSTMEncoder(nn.Module):
         self.rnns = [nn.LSTM(em if l == 0 else nh, 
                     (nh if l != nl - 1 else em) // self.ndir, 1, 
                     bidirectional=bidir) for l in range(nl)]
-        if wdrop: self.rnns = [WeightDrop(rnn, w_drop) for rnn in self.rnns]
+        if w_drop: self.rnns = [WeightDrop(rnn, w_drop) for rnn in self.rnns]
         
         self.rnns = torch.nn.ModuleList(self.rnns)
         self.encoder.weight.data.uniform_(-self.initrange, self.initrange)

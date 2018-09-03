@@ -1,6 +1,6 @@
 import html
 import spacy
-
+from spacy.symbols import ORTH
 from ..imports import *
 
 BOS = 'xbos'    # beginning-of-sentence tag
@@ -14,6 +14,67 @@ def fixup(x):
           replace('<unk>','u_n').replace(' @.@ ','.').replace(' @-@ ','-').\
           replace('\\', ' \\ ')
     return re_.sub(' ', html.unescape(x))
+
+
+class Tokenizer():
+    def __init__(self, lang='en'):
+        self.re_br = re.compile(r'<\s*br\s*/?>', re.IGNORECASE)
+        self.tok = spacy.load(lang)
+        for w in ('<eos>','<bos>','<unk>'):
+            self.tok.tokenizer.add_special_case(w, [{ORTH: w}])
+
+    def sub_br(self, x): return self.re_br.sub("\n", x)
+
+    def spacy_tok(self, x):
+        return [t.text for t in self.tok.tokenizer(self.sub_br(x))]
+
+    re_rep = re.compile(r'(\S)(\1{3,})')
+    re_word_rep = re.compile(r'(\b\w+\W+)(\1{3,})')
+
+    @staticmethod
+    def replace_rep(m):
+        TK_REP = 'tk_rep'
+        c, cc = m.groups()
+        return f' {TK_REP} {len(cc)+1} {c} '
+
+    @staticmethod
+    def replace_wrep(m):
+        TK_WREP = 'tk_wrep'
+        c, cc = m.groups()
+        return f' {TK_WREP} {len(cc.split()) + 1} {c} '
+
+    @staticmethod
+    def do_caps(ss):
+        TOK_UP, TOK_SENT, TOK_MIX = ' t_up ', ' t_st ', ' t_mx '
+        res = []
+        prev = '.'
+        re_word = re.compile('\w')
+        re_nonsp = re.compile('\S')
+        for s in re.findall(r'\w+|\W+', ss):
+            res += ([TOK_UP, s.lower()] if (s.isupper() and (len(s) > 2))
+            # else [TOK_SENT, s.lower()] if (s.istitle() and re_word.search(prev))
+                                        else [s.lower()])
+            # if re_nonsp.search(s): prev = s
+        return ''.join(res)
+
+    def proc_text(self, s):
+        s = self.re_rep.sub(Tokenizer.replace_rep, s)
+        s = self.re_word_rep.sub(Tokenizer.replace_wrep, s)
+        s = Tokenizer.do_caps(s)
+        s = re.sub(r'([/#])', r' \1 ', s)
+        s = re.sub(' {2,}', ' ', s)
+        return self.spacy_tok(s)
+
+    @staticmethod
+    def proc_all(ss, lang):
+        tok = Tokenizer(lang)
+        return [tok.proc_text(s) for s in ss]
+
+    @staticmethod
+    def proc_all_mp(ss, lang='en', n_cpus=None):
+        n_cpus = n_cpus or num_cpus() // 2
+        with ProcessPoolExecutor(n_cpus) as e:
+            return sum(e.map(Tokenizer.proc_all, ss, [lang] * len(ss)), [])
 
 
 class Preprocess(object):
@@ -36,13 +97,13 @@ class Preprocess(object):
     def _make_token(self, row):
         if len(row) == 1:
             labels = []
-            texts = f'\n{BOS} {FLD} 0 ' + row[0].astype(str)
+            texts = f'\n{BOS} {FLD} 0 ' + row[0]
         else:
-            labels = row[0].values.astype(np.int64)
-            texts = f'\n{BOS} {FLD} 0 ' + row[1].astype(str)
+            labels = row[0]
+            texts = f'\n{BOS} {FLD} 0 ' + row[1]
             # for i in range(n_lbls + 1, len(row.columns)):
             #     texts += f' {FLD} {i-n_lbls} ' + row[i].astype(str)
-        texts = list(texts.apply(fixup).values)
+        texts = list(fixup(texts))
         tokens = Tokenizer(lang=self.lang).proc_all_mp(partition_by_cores(texts), 
                                                                  lang=self.lang)
         return tokens, list(labels)

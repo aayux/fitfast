@@ -2,6 +2,7 @@ import html
 import spacy
 from spacy.symbols import ORTH
 from ..imports import *
+from ..utils.core import *
 
 BOS = 'xbos'    # beginning-of-sentence tag
 FLD = 'xfld'    # data field tag
@@ -94,13 +95,13 @@ class Preprocess(object):
             print(f'Command: python -m spacy download {self.lang}')
             sys.exit(1)
 
-    def _make_token(self, row):
-        if len(row) == 1:
+    def _make_token(self, rows):
+        if len(rows) == 1:
             labels = []
-            texts = f'\n{BOS} {FLD} 0 ' + row[0]
+            texts = f'\n{BOS} {FLD} 0 ' + rows[0].astype(str)
         else:
-            labels = row[0]
-            texts = f'\n{BOS} {FLD} 0 ' + row[1]
+            labels = rows.iloc[:, 0].values.astype(np.int64)
+            texts = f'\n{BOS} {FLD} 0 ' + row[1].astype(str)
             # for i in range(n_lbls + 1, len(row.columns)):
             #     texts += f' {FLD} {i-n_lbls} ' + row[i].astype(str)
         texts = list(fixup(texts))
@@ -111,8 +112,8 @@ class Preprocess(object):
 
     def _get_tokens(self, df):
         tokens, labels = [], []
-        for _, row in df.iterrows():
-            tokens_, labels_ = self._make_token(row)
+        for _, rows in enumerate(df):
+            tokens_, labels_ = self._make_token(rows)
             tokens += tokens_
             labels += labels_
             return tokens, labels
@@ -147,8 +148,8 @@ class Preprocess(object):
         pickle.dump(self.itos, open(self.tmp / 'itos.pkl', 'wb'))
         return train_ids, val_ids
 
-    def tokenize(self, file):
-        df = pd.read_csv(self.wd / f'{file}.csv', header=0)
+    def tokenize(self, file, chunksize=24000):
+        df = pd.read_csv(self.wd / f'{file}.csv', header=0, chunksize=chunksize)
         tokens, labels = self._get_tokens(df)
         np.save(self.tmp / f'tok_{file}.npy', tokens)
         if len(df.columns) > 1: 

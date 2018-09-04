@@ -1,9 +1,9 @@
 import torch
-
-import numpy as np
 import fitfast.trainer as ff
-from fitfast.lm import LSTMModeler
 from fitfast.utils.preprocessing import Preprocess
+from fitfast.trainer import *
+from fitfast.lm import LSTMModeler
+from fitfast.tricks.regularizers import seq2seq_regularizer
 
 CUDA_ID = 0
 
@@ -41,15 +41,15 @@ def main():
     lparams.clip = 0.2
     lparams.lrs = 1e-1
     lparams.wds = 1e-6
-    lparams.use_clr_alt = (10, 10, .95, .95)
+    lparams.use_alt_clr = (10, 10, .95, .95)
 
     # compile the learner object
     learner.compile(lparams, optimizer=optimizer, regularizer=regularizer,
                     metrics=[accuracy], 
-                    callbacks=[TensorboardLogger(), 
+                    callbacks=[TensorboardLogger(work_dir), 
                                EarlyStopping(learner, work_dir, 'example')])
     # train learner
-    learner.fit(save_best_model=True)
+    learner.fit(save_best_model=True, wd=work_dir)
     
     # save the language model and encoder
     learner.save(work_dir, 'example')
@@ -65,3 +65,5 @@ if __name__ == '__main__':
     torch.cuda.set_device(CUDA_ID)
 
     main()
+
+    # TO DO: replace wd with work_dir to avoid collision with weight decay

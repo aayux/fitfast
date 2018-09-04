@@ -5,21 +5,22 @@ from .stepper import *
 from .dataset import *
 from .schedules import *
 from .layer_optimizer import *
-from .logging import summarize
+from .logging import summarize, SaveBestModel
 from .metrics import *
 from .tricks.swa import *
 # from .fp16 import *
 import time
 
 
-class Learner():
+class Learner(object):
     def __init__(self, data, models, **kwargs):
         r"""
-        Combines a LanguageModelLoader object with a nn.Module object, such that you can 
-        train that module.
+        Combines a LanguageModelLoader object with a nn.Module object, such that
+        you can train that module.
         
         Args:
-            data (LanguageModelLoader): An instance of LanguageModelLoader.
+            data_ (LanguageModelLoader): An instance of LanguageModelLoader.
+                    This is different from data property of the class.
             models(module): chosen neural architecture for solving a supported 
                     problem.
             optimizer(function): Optimizer function, uses SGD with momentum of 
@@ -30,7 +31,7 @@ class Learner():
                     gradient to prevent exploding gradients.
             crit (function): The loss function used. Defaults to MSE Loss.
         """
-        self.data = data
+        self.data_ = data
         self.models = models
         self.sched = None
         self.wd_sched = None
@@ -42,7 +43,7 @@ class Learner():
         self.optimizer = optimizer or sgd_with_momentum()
         self.regularizer = regularizer
         self.metrics = metrics
-        self.crit = crit if crit else self._get_crit(self.data)
+        self.crit = crit if crit else self._get_crit(self.data_)
         self.callbacks = callbacks if callbacks else []
 
     @classmethod
@@ -60,7 +61,7 @@ class Learner():
     def model(self): return self.models.model
 
     @property
-    def data(self): return self.data
+    def data(self): return self.data_
 
     def summary(self): 
         return summarize(self.model, 
@@ -102,7 +103,7 @@ class Learner():
     
     def save(self, wd, name):
         self.models_path = os.path.join(wd, MODELS_DIR)
-        os.makedirs(models_path, exist_ok=True)
+        os.makedirs(self.models_path, exist_ok=True)
         save_model(self.model, self.get_model_path(name))
         if hasattr(self, 'swa_model'): 
             save_model(self.swa_model, 
@@ -111,7 +112,7 @@ class Learner():
     def load(self, path): 
         load_model(self.model, path)
 
-    def set_data(self, data): self.data = data
+    def set_data(self, data): self.data_ = data
 
     def half(self):
         if self.fp16: return
@@ -124,7 +125,8 @@ class Learner():
         if type(self.model) == FP16: self.models.model = self.model.module
         self.model.float()
     
-    def _fit(self, model, data, layer_opt, save_best_model=False, **kwargs):
+    def _fit(self, model, data, layer_opt, save_best_model=False, wd=None, 
+             **kwargs):
 
         r"""
         Method does some preparation before finally delegating to the 'fit' 
@@ -133,7 +135,7 @@ class Learner():
         iterations.
 
         Method also computes the total number of epochs to fit based on provided
-        'cycle_len', 'cycle_mult', and 'n_cycle' parameters.
+        'cycle_len', 'cycle_mult', and 'n_cycles' parameters.
 
         Arguments:
             model (Learner): Any neural architecture for solving a supported 
@@ -167,7 +169,7 @@ class Learner():
                                                 self.lparams.wds_sched_mult)
             self.callbacks += [self.wd_sched]
 
-        if laprams.use_clr is not None:
+        if self.lparams.use_clr is not None:
             clr_div, cut_div = self.lparams.use_clr[:2]
             momenta = use_clr[2:] if len(use_clr) > 2 else None
             cycle_end = None
@@ -198,7 +200,8 @@ class Learner():
         self.callbacks += [self.sched]
 
         if save_best_model:
-            self.callbacks += [SaveBestModel(self, layer_opt, self.metrics)]
+            assert wd, 'fit function requires argument wd with save_best_model'
+            self.callbacks += [SaveBestModel(self, layer_opt, self.metrics, wd)]
 
         if self.lparams.use_swa:
             # make a copy of the model to track average weights
@@ -206,7 +209,7 @@ class Learner():
             self.callbacks += [SWA(model, self.swa_model, swa_start)]
 
         n_epochs = int(gp_sum(cl if cl else 1, 
-                             self.lparams.cycle_mult, self.lparams.n_cycle))
+                             self.lparams.cycle_mult, self.lparams.n_cycles))
         
         return fit(model, data, n_epochs, layer_opt.opt, self.crit, 
                    metrics=self.metrics, callbacks=self.callbacks, 
@@ -230,7 +233,7 @@ class Learner():
 
         Returns: An instance of a LayerOptimizer
         """
-        return LayerOptimizer(self.opt_fn, self.get_layer_groups(), lrs, wds)
+        return LayerOptimizer(self.optimizer, self.get_layer_groups(), lrs, wds)
 
     def fit(self, **kwargs):
 
@@ -249,7 +252,7 @@ class Learner():
 
         Args:
             lrs (float or list(float)): Learning rate for the model.
-            n_cycle (int): Number of cycles to fit the model for.
+            n_cycles (int): Number of cycles to fit the model for.
             wds (float or list(float)): Weight decay parameter(s).
             kwargs: Other arguments
 
@@ -302,8 +305,8 @@ class Learner():
         self.fit_gen(self.model, self.data, layer_opt, 1, **kwargs)
         self.load('tmp')
 
-    def lr_find_alt(self, start_lr=1e-5, end_lr=10, num_it = 100, wds=None, 
-                 linear=False, stop=True, **kwargs):
+    def lr_find_alt(self, start_lr=1e-5, end_lr=10, num_it=100, wds=None, 
+                    linear=False, stop=True, **kwargs):
         r"""
         A variant of lr_find() that helps find the best learning rate. It 
         doesn't do an epoch but a fixed num of iterations (which may be more or 
@@ -330,12 +333,12 @@ class Learner():
         self.load('tmp')
 
     def predict(self, is_test=False, use_swa=False):
-        dl = self.data.test_dl if is_test else self.data.val
+        dl = self.data.test if is_test else self.data.val
         m = self.swa_model if use_swa else self.model
         return predict(m, dl)
 
     def predict_with_targs(self, is_test=False, use_swa=False):
-        dl = self.data.test_dl if is_test else self.data.val
+        dl = self.data.test if is_test else self.data.val
         m = self.swa_model if use_swa else self.model
         return predict_with_targs(m, dl)
 
@@ -378,7 +381,7 @@ class Learner():
         """
         if data_list is None: data_list = []
         if callbacks is None: callbacks = []
-        layer_opt = LayerOptimizer(phases[0].opt_fn, self.get_layer_groups(), 
+        layer_opt = LayerOptimizer(phases[0].optimizer, self.get_layer_groups(), 
                                    1e-2, phases[0].wds)
         if len(data_list) == 0: 
             nb_batches = [len(self.data.train)] * len(phases)

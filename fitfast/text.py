@@ -1,3 +1,4 @@
+from .imports import *
 from .utils.core import *
 from .base import *
 from .lm import *
@@ -52,7 +53,7 @@ class LanguageModelIterator(object):
 class LanguageModel(BaseModel):
     def get_layer_groups(self):
         m = self.model[0]
-        return [*zip(m.rnns, m.dropouths), (self.model[1], m.dropouti)]
+        return [*zip(m.rnns, m.drop_hs), (self.model[1], m.drop_i)]
 
 
 class LanguageModelLoader(object):
@@ -120,7 +121,7 @@ class RNNLearner(Learner):
     
     def save_encoder(self, wd, name): 
         self.models_path = os.path.join(wd, MODELS_DIR)
-        os.makedirs(models_path, exist_ok=True)
+        os.makedirs(self.models_path, exist_ok=True)
         save_model(self.model[0], self.get_model_path(name))
     
     def load_encoder(self, name):

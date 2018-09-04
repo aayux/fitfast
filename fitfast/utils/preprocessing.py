@@ -157,7 +157,7 @@ class Preprocess(object):
         return tokens
 
 
-    def load(self, wd, file, split=.9):
+    def load(self, wd, file, split=.8):
         self.wd = Path(wd)
         self.file = self.wd / file
         assert self.file.exists(), f'{self.file} does not exist.'

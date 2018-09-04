@@ -3,6 +3,7 @@ from .callback import Callback
 from .layer_optimizer import *
 from .utils.extras import draw_line, draw_text, curve_smoothing
 from enum import IntEnum
+from timeit import default_timer as timer
 
 class Recorder(Callback):
     r"""
@@ -24,7 +25,7 @@ class Recorder(Callback):
         self.start_at = timer()
         self.val_losses, self.rec_metrics = [], []
         if self.record_momentum:
-            self.momenta = []
+            self.momenta_ = []
         self.iter_ = 0
         self.epoch = 0
 
@@ -42,7 +43,7 @@ class Recorder(Callback):
             self.losses.append(loss[0])
             self.save_metrics(loss[1:])
         else: self.losses.append(loss)
-        if self.record_momentum: self.momenta.append(self.layer_opt.momentum)
+        if self.record_momentum: self.momenta_.append(self.layer_opt.momentum)
 
     def save_metrics(self, metrics):
         self.val_losses.append(delistify(metrics[0]))
@@ -60,7 +61,7 @@ class Recorder(Callback):
         plt.savefig(os.path.join(self.save_path, 'loss.png'))
         np.save(os.path.join(self.save_path, 'losses.npy'), self.losses[10:])
 
-    def plot_learningrate(self):
+    def plot_lr(self):
         r"""
         Plots learning rate in console, depending on the enviroment of the 
         learner.
@@ -72,7 +73,7 @@ class Recorder(Callback):
             axs[0].set_ylabel('learning rate')
             axs[1].set_ylabel('momentum')
             axs[0].plot(self.iters, self.lrs)
-            axs[1].plot(self.iters, self.momenta)   
+            axs[1].plot(self.iters, self.momenta_)   
         else:
             plt.xlabel('iterations')
             plt.ylabel('learning rate')
@@ -313,12 +314,10 @@ class CircularLearningRateAlt(LearningRateUpdater):
             res = self.momenta[0]
         elif self.cycle_iter > self.cycle_nb:
             ratio = 1 - (self.cycle_iter - self.cycle_nb) / self.cycle_nb
-            res = self.momenta[0] + ratio * \
-                 (self.momenta[1] - self.momenta[0])
+            res = self.momenta[0] + ratio * (self.momenta[1] - self.momenta[0])
         else:
             ratio = self.cycle_iter / self.cycle_nb
-            res = self.momenta[0] + ratio * \
-                 (self.momenta[1] - self.momenta[0])
+            res = self.momenta[0] + ratio * (self.momenta[1] - self.momenta[0])
         return res
 
 class WeightDecaySchedule(Callback):

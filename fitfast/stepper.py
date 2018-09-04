@@ -63,9 +63,9 @@ class Stepper():
         # gradient clipping
         if self.clip:
             if IS_TORCH_04: 
-                nn.utils.clip_grad_norm_(trainable_params_(self.m), self.clip)
+                nn.utils.clip_grad_norm_(trainable_params(self.m), self.clip)
             else: 
-                nn.utils.clip_grad_norm(trainable_params_(self.m), self.clip)
+                nn.utils.clip_grad_norm(trainable_params(self.m), self.clip)
         
         # weight decay after the gradient computation but before the step
         if 'wd' in self.opt.param_groups[0] \
@@ -138,10 +138,10 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None,
                             crit, **kwargs)
     epoch_vals = collections.OrderedDict()
     total_epochs = int(np.ceil(np.array(n_epochs).sum()))
-    phase_count = np.array([ep * len(dat.trn_dl) \
-                           for (ep, dat) in zip(n_epochs, data)]).cumsum()
+    phase_count = np.array([e * len(d.train) \
+                           for (e, d) in zip(n_epochs, data)]).cumsum()
     phase = 0
-    for epoch in tnrange(total_epochs, desc='epoch'):
+    for epoch in trange(total_epochs, desc='epoch'):
         # sometimes cumulated errors make this append
         if phase >= len(n_epochs): break
         model_stepper.reset(True)
@@ -150,9 +150,9 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None,
             cur_data.trn_sampler.set_epoch(epoch)
         if hasattr(cur_data, 'val_sampler'): 
             cur_data.val_sampler.set_epoch(epoch)
-        batch_n = len(cur_data.trn_dl)
-        t = tqdm(iter(cur_data.trn_dl), leave=False, total=batch_n, miniters=0)
-        if all_val: val_iter = IterateBatch(cur_data.val_dl)
+        batch_n = len(cur_data.train)
+        t = tqdm(iter(cur_data.train), leave=False, total=batch_n, miniters=0)
+        if all_val: val_iter = IterateBatch(cur_data.val)
 
         for (*x, y) in t:
             batch_n += 1
@@ -180,7 +180,7 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None,
                     break
 
         if not all_val:
-            vals = validate(model_stepper, cur_data.val_dl, metrics, 
+            vals = validate(model_stepper, cur_data.val, metrics, 
                             seq_first=seq_first)
             stop = False
             for cb in callbacks: stop = stop or cb.on_epoch_end(vals)
@@ -189,8 +189,8 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None,
                 if (epoch + 1) >= swa_start \
                 and ((epoch + 1 - swa_start) % swa_eval_freq == 0 \
                 or epoch == total_epochs - 1):
-                    fix_batchnorm(swa_model, cur_data.trn_dl)
-                    swa_vals = validate(swa_stepper, cur_data.val_dl, metrics)
+                    fix_batchnorm(swa_model, cur_data.train)
+                    swa_vals = validate(swa_stepper, cur_data.val, metrics)
                     vals += swa_vals
 
             if epoch > 0: 

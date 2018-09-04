@@ -53,7 +53,7 @@ class EarlyStopping(Callback):
     def __init__(self, learner, wd, save_as, patience=5):
         super().__init__()
         self.learner = learner
-        self.path = path
+        self.path = wd
         self.save_as = save_as
         self.patience = patience
     
@@ -81,13 +81,15 @@ class EarlyStopping(Callback):
 # TO DO: 
 # plot_lr
 # make_histograms
-class TensorBoard(Callback):
-    def __init__(self, path):
+class TensorboardLogger(Callback):
+    def __init__(self, wd):
         super().__init__()
-        self.path = path
+        timestamp = str(int(time.time()))
+        self.path = os.path.abspath(os.path.join(wd, 'summaries', timestamp))
+        os.makedirs(self.path, exist_ok=True)        
         self.writer = SummaryWriter(self.path)
     
-    def on_train_begin(self, model):
+    def on_train_begin(self):
         self.batch = 0
         self.epoch = 0
         self.phase = 0
@@ -103,10 +105,10 @@ class TensorBoard(Callback):
         self.writer.add_scalar('validation/loss', metrics[0], self.batch)
         self.epoch += 1
 
-    def on_train_end(self):
+    def on_train_end(self): pass
         # map indexes to words
-        self.writer.add_embeddings(embeddings, metadata=words, tag='embeddings')
-        self.writer.close()
+        # self.writer.add_embeddings(embeddings, metadata=words, tag='embeddings')
+        # self.writer.close()
 
 
 class SaveBestModel(Recorder):
@@ -119,10 +121,11 @@ class SaveBestModel(Recorder):
     Briefly, you have your model 'learn' variable and call fit.
     >>> learn.fit(lr, 2, cycle_len=2, cycle_mult=1, best_save_name='best')
     """
-    def __init__(self, model, layer_opt, metrics, name='best'):
+    def __init__(self, model, layer_opt, metrics, wd, name='best'):
         super().__init__(layer_opt)
         self.name = name
         self.model = model
+        self.wd = wd
         self.best_loss = None
         self.best_acc = None
         self.save_method = self.no_metrics_save if metrics == None \
@@ -138,10 +141,10 @@ class SaveBestModel(Recorder):
         if self.best_acc == None or acc > self.best_acc:
             self.best_acc = acc
             self.best_loss = loss
-            self.model.save(f'{self.name}')
+            self.model.save(self.wd, self.name)
         elif acc == self.best_acc and  loss < self.best_loss:
             self.best_loss = loss
-            self.model.save(f'{self.name}')
+            self.model.save(self.wd, self.name)
 
     def on_epoch_end(self, metrics):
         super().on_epoch_end(metrics)

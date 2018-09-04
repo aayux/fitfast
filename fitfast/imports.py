@@ -17,7 +17,7 @@ from pathlib import Path
 from distutils.version import LooseVersion
 from matplotlib import pyplot as plt
 from tqdm import tqdm, trange
-import tensorboardX
+from tensorboardX import SummaryWriter
 
 np.set_printoptions(precision=5, linewidth=110, suppress=True)
 

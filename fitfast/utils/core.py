@@ -74,7 +74,7 @@ def to_gpu(x, *args, **kwargs):
     """
     return x.cuda(*args, **kwargs) if USE_GPU else x
 
-def _trainable_params(m):
+def trainable_params(m):
     r"""
     Returns a list of trainable parameters in the model, i.e., those that 
     require gradients.
@@ -84,11 +84,11 @@ def _trainable_params(m):
 def chain_params(p):
     r"""
     Chains the list of trainable parameters in the model returned by 
-    _trainable_params.
+    trainable_params.
     """
     if isinstance(p, (list, tuple)):
-        return list(chain(*[_trainable_params(o) for o in p]))
-    return _trainable_params(p)
+        return list(chain(*[trainable_params(o) for o in p]))
+    return trainable_params(p)
 
 def set_trainable_attr(m, b):
     m.trainable = b

@@ -1,4 +1,8 @@
+from .imports import *
+from .metrics import *
+from .logging import *
 from .text import *
+from .utils.core import *
 
 class LearningParameters(object):
     r"""
@@ -44,7 +48,7 @@ class LearningParameters(object):
         lr = self.lr = 1.2e-2
         self.lrs = [lr / 6, lr / 3, lr, lr / 2] if discriminative else lr
         self.wds = 3e-6
-        self.n_cycles = 5
+        self.n_cycles = 2
         self.clip = None
 
         self.cycle_len = 1 
@@ -72,29 +76,29 @@ class Loader(LanguageModelLoader):
         self.em = em
         self.nh = nh
         self.nl = nl
-    
+
     def get_model(self, lm, itos=None, finetune=True, **kwargs):
         m = lm.get_language_model(self.n_tokens, self.em, self.nh, self.nl, 
                                       self.pad_token, **kwargs)
         model = LanguageModel(to_gpu(m))
         learner = RNNLearner(self, model)
         if finetune:
-            return self.load_pretrained_weights(learner, itos)
-        else:
-            return learner
+            weights = self.load_pretrained_weights(learner, itos)
+            learner.model.load_state_dict(weights)
+        return learner
 
     def load_pretrained_weights(self, l, itos):
         data_dir = Path('./data/wiki')
         pre_dir = data_dir / self.lang
         
-        w = torch.load(pre_dir / 'models' / 'wikitext.h5', 
+        weights = torch.load(pre_dir / 'models' / 'wikitext.h5', 
                        map_location=lambda storage, loc: storage)
-        ew = to_np(w['0.encoder.weight'])
+        ew = to_np(weights['0.encoder.weight'])
         row_m = ew.mean(0)
 
         itos_ = pickle.load(open(pre_dir / 'tmp' / f'itos.pkl', 'rb'))
         stoi_ = collections.defaultdict(lambda: -1, 
-                                        {v: k for k, v in enumerate(itos)})
+                                        {v: k for k, v in enumerate(itos_)})
         nw = np.zeros((self.n_tokens, self.em), dtype=np.float32)
         nb = np.zeros((self.n_tokens,), dtype=np.float32)
         
@@ -105,7 +109,7 @@ class Loader(LanguageModelLoader):
             else:
                 nw[i] = row_m
 
-        w['0.encoder.weight'] = T(nw)
-        w['0.encoder_with_dropout.embed.weight'] = T(np.copy(nw))
-        w['1.decoder.weight'] = T(np.copy(nw))
-        return learner.model.load_state_dict(w)
+        weights['0.encoder.weight'] = T(nw)
+        weights['0.encoder_with_dropout.embed.weight'] = T(np.copy(nw))
+        weights['1.decoder.weight'] = T(np.copy(nw))
+        return weights

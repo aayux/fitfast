@@ -103,7 +103,7 @@ def apply_leaf(m, f):
         for l in c: apply_leaf(l, f)
 
 def set_trainable(l, b):
-    apply_leaf(l, lambda m: set_trainable_attr(m,b))
+    apply_leaf(l, lambda m: set_trainable_attr(m, b))
 
 def sgd_with_momentum(momentum=0.9):
     r""" The default optimizer.

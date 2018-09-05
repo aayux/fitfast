@@ -101,8 +101,8 @@ class Learner(object):
     def get_model_path(self, name): 
         return os.path.join(self.models_path, name) + '.h5'
     
-    def save(self, wd, name):
-        self.models_path = os.path.join(wd, MODELS_DIR)
+    def save(self, work_dir, name):
+        self.models_path = os.path.join(work_dir, MODELS_DIR)
         os.makedirs(self.models_path, exist_ok=True)
         save_model(self.model, self.get_model_path(name))
         if hasattr(self, 'swa_model'): 
@@ -125,7 +125,8 @@ class Learner(object):
         if type(self.model) == FP16: self.models.model = self.model.module
         self.model.float()
     
-    def _fit(self, model, data, layer_opt, save_best_model=False, wd=None, 
+    def _fit(self, model, data, layer_opt, save_best_model=False, work_dir=None, 
+             n_cycles=None, cycle_len=None, use_clr=None, use_alt_clr=None, 
              **kwargs):
 
         r"""
@@ -150,8 +151,16 @@ class Learner(object):
 
         Returns: None
         """
+        if n_cycles is None:
+            n_cycles = self.lparams.n_cycles
+        if cycle_len is None:
+            cycle_len = self.lparams.cycle_len
+        if use_clr is None:
+            use_clr = self.lparams.use_clr
+        if use_alt_clr is None:
+            use_alt_clr = self.lparams.use_alt_clr
 
-        cl = self.lparams.cycle_len
+        cl = cycle_len
 
         if self.lparams.use_wd_sched:
             # This needs to come before CosineAnnealing() because we need to 
@@ -164,13 +173,12 @@ class Learner(object):
             n_batches = len(data.train)
             self.wd_sched = WeightDecaySchedule(layer_opt, n_batches, cl, 
                                                 self.lparams.cycle_mult, 
-                                                self.lparams.n_cycles, 
-                                                self.lparams.norm_wds, 
+                                                n_cycles, self.lparams.norm_wds, 
                                                 self.lparams.wds_sched_mult)
             self.callbacks += [self.wd_sched]
 
-        if self.lparams.use_clr is not None:
-            clr_div, cut_div = self.lparams.use_clr[:2]
+        if use_clr is not None:
+            clr_div, cut_div = use_clr[:2]
             momenta = use_clr[2:] if len(use_clr) > 2 else None
             cycle_end = None
             assert cl, 'use_clr requires cycle_len argument.'
@@ -179,10 +187,10 @@ class Learner(object):
                                               on_cycle_end=cycle_end, 
                                               div=clr_div, cut_div=cut_div, 
                                               momenta=momenta)
-        elif self.lparams.use_alt_clr is not None:
-            div, ratio = self.lparams.use_alt_clr[:2]
-            momenta = self.lparams.use_alt_clr[2:] \
-                      if len(self.lparams.use_alt_clr) > 3 else None
+        elif use_alt_clr is not None:
+            div, ratio = use_alt_clr[:2]
+            momenta = use_alt_clr[2:] \
+                      if len(use_alt_clr) > 3 else None
             cycle_end = None
             assert cl, 'use_alt_clr requires the parameter cycle_len'
             self.sched = CircularLearningRateAlt(layer_opt, 
@@ -190,7 +198,7 @@ class Learner(object):
                                                  on_cycle_end=cycle_end, div=div, 
                                                  ratio=ratio, 
                                                  momenta=momenta)
-        elif self.lparams.cycle_len:
+        elif cl:
             cycle_end = None
             cycle_batches = len(data.train) * cl
             self.sched = CosineAnnealing(layer_opt, cycle_batches, 
@@ -200,8 +208,10 @@ class Learner(object):
         self.callbacks += [self.sched]
 
         if save_best_model:
-            assert wd, 'fit function requires argument wd with save_best_model'
-            self.callbacks += [SaveBestModel(self, layer_opt, self.metrics, wd)]
+            assert work_dir, \
+            'fit function requires argument work_dit with save_best_model'
+            self.callbacks += [SaveBestModel(self, layer_opt, self.metrics, 
+                                             work_dir)]
 
         if self.lparams.use_swa:
             # make a copy of the model to track average weights
@@ -209,7 +219,7 @@ class Learner(object):
             self.callbacks += [SWA(model, self.swa_model, swa_start)]
 
         n_epochs = int(gp_sum(cl if cl else 1, 
-                             self.lparams.cycle_mult, self.lparams.n_cycles))
+                             self.lparams.cycle_mult, n_cycles))
         
         return fit(model, data, n_epochs, layer_opt.opt, self.crit, 
                    metrics=self.metrics, callbacks=self.callbacks, 
@@ -262,8 +272,44 @@ class Learner(object):
         layer_opt = self.get_layer_opt(self.lparams.lrs, self.lparams.wds)
         return self._fit(self.model, self.data, layer_opt, **kwargs)
 
+    def unfreeze(gradual, chain_thaw=False, last=False, thaw_all=True, clr=None,
+                 alt_clr=None):
+        if gradual:
+            # gradual unfreezing as specified in arxiv.org/abs/1801.06146
+            self.freeze_to(-1)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr)
+            self.freeze_to(-2)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr)
+
+        if chain_thaw:
+            lrs = [0.0001 for _ in range(5)]
+            nl = len(self.get_layer_groups())
+            
+            # fine-tune last layer
+            self.freeze_to(-1)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr)
+            
+            # fine-tune all layers up to the second-last one
+            n = 0
+            while n < nl - 1:
+                freeze_all_but(self, n)
+                self.fit(n_cycles=1, cycle_len=1, use_clr=clr, 
+                         use_alt_clr=alt_clr)
+                n += 1
+
+        if thaw_all:
+            self.unfreeze()
+        else:
+            self.freeze_to(-3)
+
+        if last:
+            self.freeze_to(-1)
+        
+        return self
+
+
     def warm_up(self, lr, wds=None):
-        layer_opt = self.get_layer_opt(lr / 4, wds)
+        layer_opt = self.get_layer_opt(lr / 4, self.lparams.wds)
         self.sched = LearningRateFinder(layer_opt, len(self.data.train), lr, 
                                         linear=True)
         return self.fit_gen(self.model, self.data, layer_opt, 1)

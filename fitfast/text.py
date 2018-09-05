@@ -54,58 +54,7 @@ class LanguageModel(BaseModel):
     def get_layer_groups(self):
         m = self.model[0]
         return [*zip(m.rnns, m.drop_hs), (self.model[1], m.drop_i)]
-
-
-class LanguageModelLoader(object):
-    r"""
-    This class provides the entry point for dealing with supported NLP tasks.
-    
-    Usage:
-    - Use one of the factory constructors to obtain an instance of the class.
-    - Use the get_model method to return a RNNLearner instance (a network suited
-        for NLP tasks), then proceed with training.
-    """
-    def __init__(self, train, val, n_tokens, pad_token, test=None, 
-                 **kwargs):
-        r""" 
-        Constructor for the class. Three instances of the LanguageModel are 
-        constructed, one each for training, validation data and the test 
-        datasets.
-            
-            Arguments:
-                train (LanguageModelLoader): Training data.
-                val (LanguageModelLoader): Validation data.
-                n_tokens (int): number of unique vocabulary words (or tokens) 
-                        in the source dataset.
-                pad_token (int): The int value used for padding text.
-                n_token (int): The int value used for padding text.
-                test (LanguageModelLoader): Testing dataset.
-                kwargs: Other arguments:
-        """
-        self.train = train
-        self.val = val
-        self.test = test
-        self.pad_token = pad_token
-        self.n_tokens = n_tokens
-
-    def get_model(self, lm, optimizer, em, nh, nl, **kwargs):
-        r"""
-        Method returns a RNNLearner object, that wraps an instance of the 
-        RNNEncoder module.
-        Arguments:
-            optimizer (Optimizer): the torch optimizer function to use
-            em (int): embedding size
-            nh (int): number of hidden inputs
-            nl (int): number of hidden layers
-            kwargs: other arguments
-        Returns:
-            An instance of the RNNLearner class.
-        """
-        m = lm.get_language_model(self.n_tokens, em, nh, nl, 
-                                      self.pad_token, **kwargs)
-        model = LanguageModel(to_gpu(m))
-        return RNNLearner(self, model, optimizer=optimizer)
-
+        
 
 class RNNLearner(Learner):
     def __init__(self, data, models, **kwargs):
@@ -132,5 +81,5 @@ class RNNLearner(Learner):
 class TextModel(BaseModel):
     def get_layer_groups(self):
         m = self.model[0]
-        return [(m.encoder, m.dropouti), *zip(m.rnns, m.dropouths), 
+        return [(m.encoder, m.drop_i), *zip(m.rnns, m.drop_hs), 
                 (self.model[1])]

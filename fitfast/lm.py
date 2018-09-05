@@ -37,7 +37,8 @@ class LanguageModeler(object):
     def __init__(self): pass
     def get_language_model(self): pass
 
-class LSTMModeler(LanguageModeler):
+
+class AWDLSTMModeler(LanguageModeler):
     def get_language_model(self, n_tokens, em, nh, nl, pad_token, drop_i=.6, 
                            drop_e=.1, drop_h=.2, drop_d=.5, w_drop=.4, 
                            tie_weights=True, bias=False):

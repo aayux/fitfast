@@ -78,7 +78,7 @@ class Recorder(Callback):
             plt.xlabel('iterations')
             plt.ylabel('learning rate')
             plt.plot(self.iters, self.lrs)
-            plt.savefig(os.path.join(self.save_path, 'learning_rate_sched.png'))
+        plt.savefig(os.path.join(self.save_path, 'learning_rate_sched.png'))
 
 class LearningRateUpdater(Recorder):
     r"""

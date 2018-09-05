@@ -11,6 +11,31 @@ def repackage_var(h):
     else: return Variable(h.data) if type(h) == Variable \
                                   else tuple(repackage_var(v) for v in h)
 
+def multi_batch_rnn(BaseEncoderClass):
+    r""" Dynamic inheritance of base encoder class
+    """
+    class MultiBatchRNN(BaseEncoderClass):
+        def __init__(self, bptt, max_seq, *args, **kwargs):
+            self.max_seq = max_seq
+            self.bptt = bptt
+            super().__init__(*args, **kwargs)
+
+        def concat(self, arrs):
+            return [torch.cat([l[si] for l in arrs]) for si in range(len(arrs[0]))]
+
+        def forward(self, input):
+            sl, bs = input.size()
+            for l in self.hidden:
+                for h in l: h.data.zero_()
+            raw_outputs, outputs = [], []
+            for i in range(0, sl, self.bptt):
+                r, o = super().forward(input[i: min(i + self.bptt, sl)])
+                if i > (sl - self.max_seq):
+                    raw_outputs.append(r)
+                    outputs.append(o)
+            return self.concat(raw_outputs), self.concat(outputs)
+    return MultiBatchRNN
+
 class AWDLSTMEncoder(nn.Module):
     r"""
     A custom RNN encoder network that uses:
@@ -228,6 +253,6 @@ class QRNNEncoder(nn.Module):
         self.weights = next(self.parameters()).data
         self.hidden = [self.one_hidden(l) for l in range(self.nl)]
 
-class TransformerEncoder(nn.Module):
+class TDEncoder(nn.Module):
     def __init__(self): pass
     def forward(self): pass

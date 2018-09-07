@@ -3,9 +3,9 @@ from .utils.core import *
 from .utils.extras import *
 
 
-def optimizer_params(parameters, lr, wd):
-    return {'params': chain_params(parameters), 
-            'lr': lr, 
+def optimizer_params(params, lr, wd):
+    return {'params': chain_params(params),
+            'lr': lr,
             'wd': wd}
 
 class LayerOptimizer(object):
@@ -53,7 +53,7 @@ class LayerOptimizer(object):
         wds = listify(wds, self.layer_groups)
         set_wds(self.opt, wds)
         set_wds_out(self.opt, [0] * len(self.layer_groups))
-        self.wds = dwds
+        self.wds = wds
     
     def set_momentum(self, momentum):
         if 'betas' in self.opt.param_groups[0]:
@@ -85,7 +85,9 @@ def set_wds_out(opt, wds):
     wds = listify(wds, opt.param_groups)
     for pg, wd in _strict_zip(opt.param_groups, wds): pg['wd'] = wd
 
+
+# why is this different?
 def set_wds(opt, wds):
     wds = listify(wds, opt.param_groups)
-    for pg, wd in _strict_zip(opt.param_groups, wds): pg['wd'] = wd
+    for pg, wd in _strict_zip(opt.param_groups, wds): pg['weight_decay'] = wd
 

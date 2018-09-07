@@ -50,11 +50,10 @@ class Stepper():
         self.opt.zero_grad() 
         loss = raw_loss = self.crit(output, y)
         if self.loss_scale != 1: 
-            # assert(self.fp16)
+            assert(self.fp16)
             loss = loss * self.loss_scale
         if self.regularizer: loss = self.regularizer(output, extra, raw_loss)
         loss.backward()
-        
         # if self.fp16: update_fp32_grads(self.fp32_params, self.m)
         # if self.loss_scale != 1:
         #     for param in self.fp32_params: 
@@ -92,7 +91,7 @@ class Stepper():
 def set_train_mode(m):
     if (hasattr(m, 'running_mean') and (getattr(m,'bn_freeze', False) \
         or not getattr(m,'trainable', False))): m.eval()
-    elif (getattr(m,'drop_freeze',False) and hasattr(m, 'p') \
+    elif (getattr(m,'drop_freeze', False) and hasattr(m, 'p') \
           and ('drop' in type(m).__name__.lower())): m.eval()
     else: m.train()
 
@@ -117,12 +116,12 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None,
     get_epoch_vals = kwargs.pop('get_epoch_vals', False)
     metrics = metrics or []
     callbacks = callbacks or []
-    avg_mom = 0.98
+    avg_momentum = 0.98
     batch_n = 0 
     avg_loss = 0.
     
     for cb in callbacks: cb.on_train_begin()
-    names = ['epoch', 'trn_loss', 'val_loss'] + [f.__name__ for f in metrics]
+    names = ['epoch', 'train_loss', 'val_loss'] + [f.__name__ for f in metrics]
     if swa_model is not None:
         swa_names = ['swa_loss'] + [f'swa_{f.__name__}' for f in metrics]
         names += swa_names
@@ -146,25 +145,24 @@ def fit(model, data, n_epochs, opt, crit, metrics=None, callbacks=None,
         if phase >= len(n_epochs): break
         model_stepper.reset(True)
         cur_data = data[phase]
-        if hasattr(cur_data, 'trn_sampler'): 
-            cur_data.trn_sampler.set_epoch(epoch)
+        if hasattr(cur_data, 'train_sampler'): 
+            cur_data.train_sampler.set_epoch(epoch)
         if hasattr(cur_data, 'val_sampler'): 
             cur_data.val_sampler.set_epoch(epoch)
-        batch_n = len(cur_data.train)
-        t = tqdm(iter(cur_data.train), leave=False, total=batch_n, miniters=0)
+        n_batches = len(cur_data.train)
+        t = tqdm(iter(cur_data.train), leave=False, total=n_batches, miniters=0)
         if all_val: val_iter = IterateBatch(cur_data.val)
 
         for (*x, y) in t:
             batch_n += 1
             for cb in callbacks: cb.on_batch_begin()
             loss = model_stepper.step(V(x),V(y), epoch)
-            avg_loss = avg_loss * avg_mom + loss * (1 - avg_mom)
-            debias_loss = avg_loss / (1 - avg_mom ** batch_n)
+            avg_loss = avg_loss * avg_momentum + loss * (1 - avg_momentum)
+            debias_loss = avg_loss / (1 - (avg_momentum ** batch_n))
             t.set_postfix(loss=debias_loss, refresh=False)
             stop = False
             loss_ = debias_loss if not all_val \
             else [debias_loss] + validate_next(model_stepper, metrics, val_iter)
-            
             for cb in callbacks: stop = stop or cb.on_batch_end(loss_)
             if stop: return
             if batch_n >= phase_count[phase]:

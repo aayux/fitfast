@@ -1,4 +1,5 @@
 from .imports import *
+from .utils.core import to_np
 from .schedules import Recorder
 from .layer_optimizer import *
 from .callback import Callback
@@ -50,10 +51,9 @@ class LoggingCallback(Callback):
         self.f.write(f'{time.strftime("%Y-%m-%dT%H:%M:%S")}\t{message}\n')
 
 class EarlyStopping(Callback):
-    def __init__(self, learner, wd, save_as, patience=5):
+    def __init__(self, learner, save_as, patience=5):
         super().__init__()
         self.learner = learner
-        self.path = wd
         self.save_as = save_as
         self.patience = patience
     
@@ -66,7 +66,7 @@ class EarlyStopping(Callback):
         if val_loss < self.best_val_loss:
             self.best_val_loss = val_loss
             self.no_improvement = 0
-            self.learner.save(self.path, self.save_as)
+            self.learner.save(self.save_as)
         else:
             self.no_improvement += 1
         
@@ -75,40 +75,50 @@ class EarlyStopping(Callback):
             return True
     
     def on_train_end(self):
-        print(f'Best model saved in {self.path}')
+        print(f'Best model saved as {self.save_as}')
         return True
 
-# TO DO: 
-# plot_lr
-# make_histograms
 class TensorboardLogger(Callback):
-    def __init__(self, wd):
+    def __init__(self, learner, work_dir, finetune=True):
         super().__init__()
         timestamp = str(int(time.time()))
-        self.path = os.path.abspath(os.path.join(wd, 'summaries', timestamp))
+        self.path = os.path.abspath(os.path.join(work_dir, 'summaries', 
+                                    'lm' if finetune else 'classifier', 
+                                    timestamp))
         os.makedirs(self.path, exist_ok=True)        
         self.writer = SummaryWriter(self.path)
+        self.work_dir = Path(work_dir)
+        self.finetune = finetune
+        self.model = learner.model
     
     def on_train_begin(self):
         self.batch = 0
         self.epoch = 0
-        self.phase = 0
-        # input = torch.autograd.Variable(torch.Tensor(<input-shape>), 
-        #                                 requires_grad=True))
-        # self.writer.add_graph(model, input)
+        # fix this
+        # input_ = torch.autograd.Variable(torch.rand(100), requires_grad=False)
+        # self.writer.add_graph(self.model[0], input_)
     
-    def on_batch_end(self, metrics):
-        self.writer.add_scalar('train/loss', metrics, self.batch)
+    def on_batch_end(self, loss):
+        self.writer.add_scalar('train/loss', loss, self.batch)
         self.batch += 1
 
     def on_epoch_end(self, metrics):
         self.writer.add_scalar('validation/loss', metrics[0], self.batch)
+        self.writer.add_scalar('validation/accuracy', metrics[1], self.batch)
+        weights = self.model.state_dict()
+        for w in weights.keys():
+            self.writer.add_histogram(f'weight: {w}', to_np(weights[w]), 
+                                      self.batch)
         self.epoch += 1
 
-    def on_train_end(self): pass
-        # map indexes to words
-        # self.writer.add_embeddings(embeddings, metadata=words, tag='embeddings')
-        # self.writer.close()
+    def on_train_end(self):
+        if self.finetune:
+            # map indexes to words
+            weights = self.model[0].state_dict()
+            embeddings = to_np(weights['encoder.weight'])
+            itos = pickle.load(open(self.work_dir / 'tmp' / 'itos.pkl', 'rb'))
+            self.writer.add_embedding(embeddings, metadata=itos, tag='embeddings')
+        self.writer.close()
 
 
 class SaveBestModel(Recorder):
@@ -121,11 +131,10 @@ class SaveBestModel(Recorder):
     Briefly, you have your model 'learn' variable and call fit.
     >>> learn.fit(lr, 2, cycle_len=2, cycle_mult=1, best_save_name='best')
     """
-    def __init__(self, model, layer_opt, metrics, wd, name='best'):
+    def __init__(self, model, layer_opt, metrics, name='best'):
         super().__init__(layer_opt)
         self.name = name
         self.model = model
-        self.wd = wd
         self.best_loss = None
         self.best_acc = None
         self.save_method = self.no_metrics_save if metrics == None \
@@ -134,17 +143,17 @@ class SaveBestModel(Recorder):
         loss = metrics[0]
         if self.best_loss == None or loss < self.best_loss:
             self.best_loss = loss
-            self.model.save(f'{self.name}')
+            self.model.save(self.name)
     
     def metrics_save(self, metrics):
         loss, acc = metrics[0], metrics[1]
         if self.best_acc == None or acc > self.best_acc:
             self.best_acc = acc
             self.best_loss = loss
-            self.model.save(self.wd, self.name)
+            self.model.save(self.name)
         elif acc == self.best_acc and  loss < self.best_loss:
             self.best_loss = loss
-            self.model.save(self.wd, self.name)
+            self.model.save(self.name)
 
     def on_epoch_end(self, metrics):
         super().on_epoch_end(metrics)

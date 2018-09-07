@@ -1,16 +1,7 @@
 from .imports import *
 from .encoders import AWDLSTMEncoder, QRNNEncoder
 from .tricks.dropout import LockedDropout
-
-class SequentialRNN(nn.Sequential):
-    r"""
-    The SequentialRNN layer is the native torch's Sequential wrapper that puts 
-    the Encoder and Decoder modules sequentially in the model.
-    """
-    def reset(self):
-        for c in self.children():
-            if hasattr(c, 'reset'): c.reset()
-
+from .text import SequentialRNN
 
 class LinearDecoder(nn.Module):
     initrange = 0.1

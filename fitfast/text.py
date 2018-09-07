@@ -1,8 +1,16 @@
 from .imports import *
 from .utils.core import *
 from .base import *
-from .lm import *
 from .learner import *
+
+class SequentialRNN(nn.Sequential):
+    r"""
+    The SequentialRNN layer is the native torch's Sequential wrapper that puts 
+    the Encoder and Decoder modules sequentially in the model.
+    """
+    def reset(self):
+        for c in self.children():
+            if hasattr(c, 'reset'): c.reset()
 
 class LanguageModelIterator(object):
     r""" 
@@ -68,14 +76,52 @@ class RNNLearner(Learner):
     def get_model_path(self, name): 
         return os.path.join(self.models_path, name) + '.h5'
     
-    def save_encoder(self, wd, name): 
-        self.models_path = os.path.join(wd, MODELS_DIR)
+    def save_encoder(self, name): 
+        self.models_path = os.path.join(self.work_dir, MODELS_DIR)
         os.makedirs(self.models_path, exist_ok=True)
         save_model(self.model[0], self.get_model_path(name))
     
     def load_encoder(self, name):
-        self.models_path = os.path.join(wd, MODELS_DIR)
-        load_model(self.model[0], self.get_model_path(name))
+        self.models_path = os.path.join(self.work_dir, MODELS_DIR)
+        load_model(self.model[0], self.get_model_path(f'{name}_encoder'))
+
+    def thaw(self, name, gradual, chain_thaw=False, thaw_all=True, last=False, 
+             clr=None, alt_clr=None):
+        self.load_encoder(name)
+        
+        if gradual:
+            # gradual unfreezing as specified in arxiv.org/abs/1801.06146
+            self.freeze_to(-1)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+                     callbacks=[])
+            self.freeze_to(-2)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+                     callbacks=[])
+
+        if chain_thaw:
+            lrs = [0.0001 for _ in range(5)]
+            nl = len(self.get_layer_groups())
+            
+            # fine-tune last layer
+            self.freeze_to(-1)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+                     callbacks=[])
+            
+            # fine-tune all layers up to the second-last one
+            n = 0
+            while n < nl - 1:
+                freeze_all_but(self, n)
+                self.fit(n_cycles=1, cycle_len=1, use_clr=clr, 
+                         use_alt_clr=alt_clr, callbacks=[])
+                n += 1
+
+        if thaw_all:
+            self.unfreeze()
+        else:
+            self.freeze_to(-3)
+
+        if last:
+            self.freeze_to(-1)
 
 
 class TextModel(BaseModel):

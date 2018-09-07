@@ -2,8 +2,8 @@ from ..imports import *
 
 IS_TORCH_04 = LooseVersion(torch.__version__) >= LooseVersion('0.4')
 USE_GPU = torch.cuda.is_available()
-TMP_DIR = './data/tmp'
-MODELS_DIR = './data/models'
+TMP_DIR = '.tmp'
+MODELS_DIR = 'models'
 
 def no_op(*args, **kwargs): return
 
@@ -140,7 +140,6 @@ def save_model(m, p): torch.save(m.state_dict(), p)
 def load_model(m, p):
     sd = torch.load(p, map_location=lambda storage, loc: storage)
     names = set(m.state_dict().keys())
-    
     # list "detatches" the iterator
     for n in list(sd.keys()):
         if n not in names and f'{n}_raw' in names:

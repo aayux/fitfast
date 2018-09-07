@@ -1,6 +1,7 @@
 import warnings
 from ..imports import *
 from ..encoders import multi_batch_rnn
+from ..text import SequentialRNN
 
 class LinearBlock(nn.Module):
     def __init__(self, ni, nf, drop):
@@ -13,11 +14,11 @@ class LinearBlock(nn.Module):
 
 
 class PoolingLinearClassifier(nn.Module):
-    def __init__(self, layers, drops):
+    def __init__(self, dims, drop):
         super().__init__()
         self.layers = nn.ModuleList([
-            LinearBlock(layers[i], layers[i + 1], drops[i]) \
-                        for i in range(len(layers) - 1)])
+            LinearBlock(dims[i], dims[i + 1], drop[i]) \
+                        for i in range(len(dims) - 1)])
 
     def pool(self, x, bs, is_max):
         f = F.adaptive_max_pool1d if is_max else F.adaptive_avg_pool1d
@@ -28,8 +29,8 @@ class PoolingLinearClassifier(nn.Module):
         output = outputs[-1]
         sl, bs, _ = output.size()
         avgpool = self.pool(output, bs, False)
-        mxpool = self.pool(output, bs, True)
-        x = torch.cat([output[-1], mxpool, avgpool], 1)
+        maxpool = self.pool(output, bs, True)
+        x = torch.cat([output[-1], maxpool, avgpool], 1)
         for l in self.layers:
             l_x = l(x)
             x = F.relu(l_x)
@@ -44,5 +45,5 @@ class Linear(object):
         encoder = _encoder_init(bptt, max_seq, n_tokens, em, nh, nl, 
                                 pad_token=pad_token, bidir=bidir, drop_i=drop_i, 
                                 drop_e=drop_e, drop_h=drop_h, w_drop=w_drop)
-        decoder = PoolingLinearClassifier(layers, drop_d)
+        decoder = PoolingLinearClassifier(dims, drop_d)
         return SequentialRNN(encoder, decoder)

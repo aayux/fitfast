@@ -192,7 +192,7 @@ class Preprocess(object):
         return self.tok2id(max_vocab=30000, min_freq=1)
 
     def vocabulary(self):
-        return self.itos
+        return self.itos, len(self.itos)
 
     def split_train_val(self, df, split=.9):
         df = df.sample(frac=1).reset_index(drop=True)

@@ -4,6 +4,7 @@ from .imports import *
 from .utils.core import *
 from .learner import *
 from torch.utils.data.sampler import Sampler
+from torch._six import int_classes as _int_classes
 
 
 class RandomSampler(Sampler):
@@ -97,7 +98,7 @@ class WeightedRandomSampler(Sampler):
             raise ValueError(f'replacement should be a boolean value, but got '
                              f'replacement={replacement}')
 
-        self.weights = torch.tensor(weights, dtype=torch.double)
+        self.weights = torch.DoubleTensor(weights)
         self.num_samples = num_samples
         self.replacement = replacement
 

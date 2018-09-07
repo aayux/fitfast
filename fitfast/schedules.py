@@ -203,7 +203,7 @@ class CosineAnnealing(LearningRateUpdater):
     """
     def __init__(self, layer_opt, nb, on_cycle_end=None, cycle_mult=1):
         self.nb = nb
-        self.on_cycle_end = on_cycle_end,
+        self.on_cycle_end = on_cycle_end
         self.cycle_mult = cycle_mult
         super().__init__(layer_opt)
 

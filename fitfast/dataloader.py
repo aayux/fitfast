@@ -4,6 +4,7 @@ from torch.utils.data.sampler import SequentialSampler, RandomSampler, \
                                      BatchSampler
 from .imports import *
 from .utils.core import *
+from .utils.extras import chunk_iter
 import collections
 import sys
 import traceback
@@ -126,9 +127,9 @@ class DataLoader(object):
                          f'found {type(batch)}'))
 
     def _get_batch(self, idxs):
-        bacth = self._np_collate([self.data[idx] for idx in idxs])
-        if self.transpose: res[0] = res[0].T
-        if self.transpose_y: res[1] = res[1].T
+        batch = self._np_collate([self.data[idx] for idx in idxs])
+        if self.transpose: batch[0] = batch[0].T
+        if self.transpose_y: batch[1] = batch[1].T
         return batch
 
     def __iter__(self):

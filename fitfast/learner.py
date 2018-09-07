@@ -37,14 +37,15 @@ class Learner(object):
         self.wd_sched = None
         self.fp16 = False
 
-    def compile(self, lparams, optimizer=None, regularizer=None, metrics=None, 
-                crit=None, callbacks=None):
+    def compile(self, work_dir, lparams, optimizer=None, regularizer=None, 
+                metrics=None, crit=None, callbacks=None):
         self.lparams = lparams
         self.optimizer = optimizer or sgd_with_momentum()
         self.regularizer = regularizer
         self.metrics = metrics
         self.crit = crit if crit else self._get_crit(self.data_)
         self.callbacks = callbacks if callbacks else []
+        self.work_dir = work_dir
 
     @classmethod
     def from_model_data(cls, m, data, **kwargs):
@@ -99,10 +100,11 @@ class Learner(object):
     def unfreeze(self): self.freeze_to(0)
 
     def get_model_path(self, name): 
+        self.models_path = os.path.join(self.work_dir, MODELS_DIR)
         return os.path.join(self.models_path, name) + '.h5'
     
-    def save(self, work_dir, name):
-        self.models_path = os.path.join(work_dir, MODELS_DIR)
+    def save(self, name):
+        self.models_path = os.path.join(self.work_dir, MODELS_DIR)
         os.makedirs(self.models_path, exist_ok=True)
         save_model(self.model, self.get_model_path(name))
         if hasattr(self, 'swa_model'): 
@@ -125,9 +127,9 @@ class Learner(object):
         if type(self.model) == FP16: self.models.model = self.model.module
         self.model.float()
     
-    def _fit(self, model, data, layer_opt, save_best_model=False, work_dir=None, 
-             n_cycles=None, cycle_len=None, use_clr=None, use_alt_clr=None, 
-             **kwargs):
+    def _fit(self, model, data, layer_opt, save_best_model=False, n_cycles=None, 
+            cycle_len=None, use_clr=None, use_alt_clr=None, callbacks=None, 
+            **kwargs):
 
         r"""
         Method does some preparation before finally delegating to the 'fit' 
@@ -159,6 +161,8 @@ class Learner(object):
             use_clr = self.lparams.use_clr
         if use_alt_clr is None:
             use_alt_clr = self.lparams.use_alt_clr
+        if callbacks is None:
+            callbacks = self.callbacks
 
         cl = cycle_len
 
@@ -175,54 +179,52 @@ class Learner(object):
                                                 self.lparams.cycle_mult, 
                                                 n_cycles, self.lparams.norm_wds, 
                                                 self.lparams.wds_sched_mult)
-            self.callbacks += [self.wd_sched]
+            callbacks += [self.wd_sched]
 
         if use_clr is not None:
             clr_div, cut_div = use_clr[:2]
             momenta = use_clr[2:] if len(use_clr) > 2 else None
-            cycle_end = None
             assert cl, 'use_clr requires cycle_len argument.'
+            cycle_batches = len(data.train) * cl
             self.sched = CircularLearningRate(layer_opt, 
-                                              len(data.train) * cl, 
-                                              on_cycle_end=cycle_end, 
+                                              cycle_batches, 
+                                              on_cycle_end=None, 
                                               div=clr_div, cut_div=cut_div, 
                                               momenta=momenta)
         elif use_alt_clr is not None:
             div, ratio = use_alt_clr[:2]
             momenta = use_alt_clr[2:] \
                       if len(use_alt_clr) > 3 else None
-            cycle_end = None
             assert cl, 'use_alt_clr requires the parameter cycle_len'
+            cycle_batches = len(data.train) * cl
             self.sched = CircularLearningRateAlt(layer_opt, 
-                                                 len(data.train) * cl,
-                                                 on_cycle_end=cycle_end, div=div, 
+                                                 cycle_batches,
+                                                 on_cycle_end=None, div=div, 
                                                  ratio=ratio, 
                                                  momenta=momenta)
         elif cl:
-            cycle_end = None
             cycle_batches = len(data.train) * cl
             self.sched = CosineAnnealing(layer_opt, cycle_batches, 
-                                         on_cycle_end=cycle_end, 
+                                         on_cycle_end=None, 
                                          cycle_mult=self.lparams.cycle_mult)
         elif not self.sched: self.sched =  Recorder(layer_opt)
-        self.callbacks += [self.sched]
+        callbacks += [self.sched]
 
         if save_best_model:
-            assert work_dir, \
-            'fit function requires argument work_dit with save_best_model'
-            self.callbacks += [SaveBestModel(self, layer_opt, self.metrics, 
-                                             work_dir)]
+            assert self.work_dir, \
+            'fit function requires argument work_dir with save_best_model'
+            callbacks += [SaveBestModel(self, layer_opt, self.metrics)]
 
         if self.lparams.use_swa:
             # make a copy of the model to track average weights
             self.swa_model = copy.deepcopy(model)
-            self.callbacks += [SWA(model, self.swa_model, swa_start)]
+            callbacks += [SWA(model, self.swa_model, swa_start)]
 
         n_epochs = int(gp_sum(cl if cl else 1, 
                              self.lparams.cycle_mult, n_cycles))
         
         return fit(model, data, n_epochs, layer_opt.opt, self.crit, 
-                   metrics=self.metrics, callbacks=self.callbacks, 
+                   metrics=self.metrics, callbacks=callbacks, 
                    regularizer=self.regularizer, clip=self.lparams.clip, 
                    fp16=self.fp16, 
                    swa_model=self.swa_model if self.lparams.use_swa else None, 
@@ -272,14 +274,16 @@ class Learner(object):
         layer_opt = self.get_layer_opt(self.lparams.lrs, self.lparams.wds)
         return self._fit(self.model, self.data, layer_opt, **kwargs)
 
-    def unfreeze(gradual, chain_thaw=False, last=False, thaw_all=True, clr=None,
-                 alt_clr=None):
+    def thaw(self, gradual, chain_thaw=False, thaw_all=True, last=False, 
+             clr=None, alt_clr=None):
         if gradual:
             # gradual unfreezing as specified in arxiv.org/abs/1801.06146
             self.freeze_to(-1)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+                     callbacks=[])
             self.freeze_to(-2)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+                     callbacks=[])
 
         if chain_thaw:
             lrs = [0.0001 for _ in range(5)]
@@ -287,14 +291,15 @@ class Learner(object):
             
             # fine-tune last layer
             self.freeze_to(-1)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr)
+            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+                     callbacks=[])
             
             # fine-tune all layers up to the second-last one
             n = 0
             while n < nl - 1:
                 freeze_all_but(self, n)
                 self.fit(n_cycles=1, cycle_len=1, use_clr=clr, 
-                         use_alt_clr=alt_clr)
+                         use_alt_clr=alt_clr, callbacks=[])
                 n += 1
 
         if thaw_all:
@@ -304,9 +309,6 @@ class Learner(object):
 
         if last:
             self.freeze_to(-1)
-        
-        return self
-
 
     def warm_up(self, lr, wds=None):
         layer_opt = self.get_layer_opt(lr / 4, self.lparams.wds)

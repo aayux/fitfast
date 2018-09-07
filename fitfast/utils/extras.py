@@ -1,5 +1,4 @@
 from ..imports import *
-
 def gp_sum(a, r, n):
     r""" 
     Returns the sum of Geometric Progression. This is required here for 
@@ -53,3 +52,15 @@ def curve_smoothing(vals, beta):
         avg_val = beta * avg_val + (1 - beta) * v
         smoothed.append(avg_val / (1 - beta ** (i + 1)))
     return smoothed
+
+def chunk_iter(iterable, chunk_size):
+    r""" A generator that yields chunks of iterable, chunk_size at a time.
+    """
+    while True:
+        chunk = []
+        try:
+            for _ in range(chunk_size): chunk.append(next(iterable))
+            yield chunk
+        except StopIteration:
+            if chunk: yield chunk
+            break

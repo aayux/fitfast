@@ -4,6 +4,7 @@ from .metrics import *
 from .logging import *
 from .text import *
 from .lm import *
+from .samplers import *
 from .classifiers.linear import Linear
 from .utils.core import *
 
@@ -47,13 +48,14 @@ class LearningParameters(object):
             the data), which is why the default is not to evaluate after
             each epoch.
     """
-    def __init__(self, fintune=True, discriminative=True):
+    def __init__(self, finetune=True, discriminative=True):
         lr = self.lr = 1.2e-2
         self.lrm = 2.6
         self.lrs = lr
         if discriminative:
             self.lrs = [lr / 6, lr / 3, lr, lr / 2] if finetune \
-            else [lr / (lrm ** 4), lr / (lrm ** 3), lr/(lrm ** 2), lr / lrm, lr]
+            else [lr / (self.lrm ** 4), lr / (self.lrm ** 3), 
+                  lr/(self.lrm ** 2), lr / self.lrm, lr]
         self.wds = 3e-6
         self.n_cycles = 2
         self.clip = None
@@ -82,7 +84,7 @@ class LanguageModelLoader(object):
     - Use the get_model method to return a RNNLearner instance (a network suited
         for NLP tasks), then proceed with training.
     """
-    def __init__(self, train_ids, val_ids, lang, bs, bptt, n_tokens=30000, 
+    def __init__(self, train_ids, val_ids, lang, bs, bptt, n_tokens=None, 
                  pad_token=1, em=300, nh=1000, nl=3, **kwargs):
         r""" 
         Constructor for the class. Three instances of the LanguageModel are 
@@ -136,6 +138,7 @@ class LanguageModelLoader(object):
         
         weights = torch.load(pre_dir / 'models' / 'wikitext.h5', 
                        map_location=lambda storage, loc: storage)
+        
         ew = to_np(weights['0.encoder.weight'])
         row_m = ew.mean(0)
 
@@ -159,10 +162,12 @@ class LanguageModelLoader(object):
 
 class ClassifierLoader(object):
     def __init__(self, work_dir, bs, bptt, dims=None, sampler=None, max_seq=1000, 
-                 n_tokens=30000, pad_token=1, em=300, nh=1000, nl=3, **kwargs):
+                 n_tokens=None, pad_token=1, em=300, nh=1000, nl=3, **kwargs):
         self.pad_token = pad_token
         self.n_tokens = n_tokens
+        self.bptt = bptt
         self.dims = dims
+        self.max_seq = max_seq
         self.em = em
         self.nh = nh
         self.nl = nl
@@ -177,16 +182,16 @@ class ClassifierLoader(object):
             train_samp = SortishSampler(x_train, key=lambda x: len(x_train[x]), 
                                         bs=bs // 2)
         else:
-            train_samp = _get_sampler(sampler, x_train y_train, bs // 2)
+            train_samp = _get_sampler(sampler, x_train, y_train, bs // 2)
+
         val_samp = SortedSampler(x_val, key=lambda x: len(x_val[x]))
 
         train = TextDataset(x_train, y_train)
         val = TextDataset(x_val, y_val)
-        del x_train, x_val, y_train, y_val
         
         train = DataLoader(train, bs // 2, transpose=True, num_workers=1, 
-                           pad_idx=1, sampler=train_samp)
-        val = DataLoader(val, bs, transpose=True, num_workers=1, pad_idx=1, 
+                           pad_token=1, sampler=train_samp)
+        val = DataLoader(val, bs, transpose=True, num_workers=1, pad_token=1, 
                          sampler=val_samp)
         self.md = ModelData(work_dir, train, val)
     
@@ -211,6 +216,8 @@ class ClassifierLoader(object):
         x_val = np.load(tmp_dir / 'val_ids.npy')
         y_train = np.load(tmp_dir / 'lbl_train.npy')
         y_val = np.load(tmp_dir / 'lbl_val.npy')
+        y_train = y_train.flatten()
+        y_val = y_val.flatten()
         return x_train, x_val, y_train, y_val
 
 def _get_sampler(sampler, x, y, bs):
@@ -219,7 +226,7 @@ def _get_sampler(sampler, x, y, bs):
     elif sampler == 'sortish':
         return SortishSampler(x, key=lambda x_: len(x[x_]), bs=bs)
     elif sampler == 'weighted':
-        ratio = np.unique(y, return_counts=True)[1]
+        count = np.unique(y, return_counts=True)[1]
         weight = np.array([1 / count[0], 1 / count[1]])
         weight = weight[y]
         return WeightedRandomSampler(weight, len(weight))

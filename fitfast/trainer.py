@@ -84,7 +84,7 @@ class LanguageModelLoader(object):
     - Use the get_model method to return a RNNLearner instance (a network suited
         for NLP tasks), then proceed with training.
     """
-    def __init__(self, train_ids, val_ids, lang, bs, bptt, n_tokens=None, 
+    def __init__(self, train_ids, val_ids, lang, bs=64, bptt=50, n_tokens=None, 
                  pad_token=1, em=300, nh=1000, nl=3, **kwargs):
         r""" 
         Constructor for the class. Three instances of the LanguageModel are 
@@ -161,8 +161,9 @@ class LanguageModelLoader(object):
         return weights
 
 class ClassifierLoader(object):
-    def __init__(self, work_dir, bs, bptt, dims=None, sampler=None, max_seq=1000, 
-                 n_tokens=None, pad_token=1, em=300, nh=1000, nl=3, **kwargs):
+    def __init__(self, work_dir, bs=64, bptt=50, dims=None, sampler=None, 
+                 max_seq=1000, n_tokens=None, pad_token=1, em=300, nh=1000, 
+                 nl=3, **kwargs):
         self.pad_token = pad_token
         self.n_tokens = n_tokens
         self.bptt = bptt

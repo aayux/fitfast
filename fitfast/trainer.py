@@ -57,14 +57,14 @@ class LearningParameters(object):
             else [lr / (self.lrm ** 4), lr / (self.lrm ** 3), 
                   lr/(self.lrm ** 2), lr / self.lrm, lr]
         self.wds = 3e-6
-        self.n_cycles = 2
+        self.n_cycles = 1
         self.clip = None
 
         self.cycle_len = 1 
         self.cycle_mult = 1 
 
-        self.use_clr = None
-        self.use_alt_clr = None
+        self.clr = None
+        self.alt_clr = None
 
         self.use_wd_sched = False
         self.norm_wds = False
@@ -162,7 +162,7 @@ class LanguageModelLoader(object):
 
 class ClassifierLoader(object):
     def __init__(self, work_dir, bs=64, bptt=50, dims=None, sampler=None, 
-                 max_seq=1000, n_tokens=None, pad_token=1, em=300, nh=1000, 
+                 max_seq=1400, n_tokens=None, pad_token=1, em=300, nh=1000, 
                  nl=3, **kwargs):
         self.pad_token = pad_token
         self.n_tokens = n_tokens
@@ -228,7 +228,7 @@ def _get_sampler(sampler, x, y, bs):
         return SortishSampler(x, key=lambda x_: len(x[x_]), bs=bs)
     elif sampler == 'weighted':
         count = np.unique(y, return_counts=True)[1]
-        weight = np.array([1 / count[0], 1 / count[1]])
+        weight = 1 / count
         weight = weight[y]
         return WeightedRandomSampler(weight, len(weight))
     else: raise ValueError(f'Unknown sampler {sampler}.')

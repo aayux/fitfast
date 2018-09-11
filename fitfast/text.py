@@ -92,10 +92,10 @@ class RNNLearner(Learner):
         if gradual:
             # gradual unfreezing as specified in arxiv.org/abs/1801.06146
             self.freeze_to(-1)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+            self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
                      callbacks=[])
             self.freeze_to(-2)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+            self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
                      callbacks=[])
 
         if chain_thaw:
@@ -104,15 +104,15 @@ class RNNLearner(Learner):
             
             # fine-tune last layer
             self.freeze_to(-1)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+            self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
                      callbacks=[])
             
             # fine-tune all layers up to the second-last one
             n = 0
             while n < nl - 1:
                 freeze_all_but(self, n)
-                self.fit(n_cycles=1, cycle_len=1, use_clr=clr, 
-                         use_alt_clr=alt_clr, callbacks=[])
+                self.fit(n_cycles=1, cycle_len=1, clr=clr, 
+                         alt_clr=alt_clr, callbacks=[])
                 n += 1
 
         if thaw_all:

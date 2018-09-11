@@ -49,8 +49,8 @@ class Tokenizer():
         TOK_UP, TOK_SENT, TOK_MIX = ' t_up ', ' t_st ', ' t_mx '
         res = []
         prev = '.'
-        re_word = re.compile('\w')
-        re_nonsp = re.compile('\S')
+        re_word = re.compile(r'\w')
+        re_nonsp = re.compile(r'\S')
         for s in re.findall(r'\w+|\W+', ss):
             res += ([TOK_UP, s.lower()] if (s.isupper() and (len(s) > 2))
             # else [TOK_SENT, s.lower()] if (s.istitle() and re_word.search(prev))

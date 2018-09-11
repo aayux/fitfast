@@ -56,22 +56,22 @@ class SortishSampler(Sampler):
     def __len__(self): return len(self.data)
 
     def __iter__(self):
-        idxs = torch.randperm(len(self.data))
+        idxs = np.random.permutation(len(self.data))
         sz = self.bs * 50
         chunk_idx = [idxs[i : i + sz] for i in range(0, len(idxs), sz)]
-        sort_idx = torch.cat([T(sorted(s, key=self.key, reverse=True)) \
-                                                        for s in chunk])
+        sort_idx = np.concatenate([sorted(s, key=self.key, reverse=True) \
+                                                    for s in chunk_idx])
         sz = self.bs
         chunk_idx = [sort_idx[i : i + sz] for i in range(0, len(sort_idx), sz)]
         
         # find the chunk with the largest key
-        max_chunk = max([self.key(chunk[0]) for chunk in chunk_idx])
+        max_chunk = np.argmax([self.key(chunk[0]) for chunk in chunk_idx])
         
         # make sure it goes first
-        chunk_idx[0], chunk_idx[max_ck] = chunk_idx[max_ck], chunk_idx[0]
+        chunk_idx[0], chunk_idx[max_chunk] = chunk_idx[max_chunk], chunk_idx[0]
         
-        sort_idx = torch.cat(torch.randperm(chunk_idx[1:]))
-        sort_idx = torch.cat((chunk_idx[0], sort_idx))
+        sort_idx = np.concatenate(np.random.permutation(chunk_idx[1:]))
+        sort_idx = np.concatenate((chunk_idx[0], sort_idx))
         return iter(sort_idx)
 
 

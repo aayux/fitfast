@@ -128,8 +128,7 @@ class Learner(object):
         self.model.float()
     
     def _fit(self, model, data, layer_opt, save_best_model=False, n_cycles=None, 
-            cycle_len=None, use_clr=None, use_alt_clr=None, callbacks=None, 
-            **kwargs):
+            cycle_len=None, clr=None, alt_clr=None, callbacks=None, **kwargs):
 
         r"""
         Method does some preparation before finally delegating to the 'fit' 
@@ -157,10 +156,10 @@ class Learner(object):
             n_cycles = self.lparams.n_cycles
         if cycle_len is None:
             cycle_len = self.lparams.cycle_len
-        if use_clr is None:
-            use_clr = self.lparams.use_clr
-        if use_alt_clr is None:
-            use_alt_clr = self.lparams.use_alt_clr
+        if clr is None:
+            clr = self.lparams.clr
+        if alt_clr is None:
+            alt_clr = self.lparams.alt_clr
         if callbacks is None:
             callbacks = self.callbacks
 
@@ -181,21 +180,21 @@ class Learner(object):
                                                 self.lparams.wds_sched_mult)
             callbacks += [self.wd_sched]
 
-        if use_clr is not None:
-            clr_div, cut_div = use_clr[:2]
-            momenta = use_clr[2:] if len(use_clr) > 2 else None
-            assert cl, 'use_clr requires cycle_len argument.'
+        if clr is not None:
+            clr_div, cut_div = clr[:2]
+            momenta = clr[2:] if len(clr) > 2 else None
+            assert cl, 'clr requires cycle_len argument.'
             cycle_batches = len(data.train) * cl
             self.sched = CircularLearningRate(layer_opt, 
                                               cycle_batches, 
                                               on_cycle_end=None, 
                                               div=clr_div, cut_div=cut_div, 
                                               momenta=momenta)
-        elif use_alt_clr is not None:
-            div, ratio = use_alt_clr[:2]
-            momenta = use_alt_clr[2:] \
-                      if len(use_alt_clr) > 3 else None
-            assert cl, 'use_alt_clr requires the parameter cycle_len'
+        elif alt_clr is not None:
+            div, ratio = alt_clr[:2]
+            momenta = alt_clr[2:] \
+                      if len(alt_clr) > 3 else None
+            assert cl, 'alt_clr requires the parameter cycle_len'
             cycle_batches = len(data.train) * cl
             self.sched = CircularLearningRateAlt(layer_opt, 
                                                  cycle_batches,
@@ -279,10 +278,10 @@ class Learner(object):
         if gradual:
             # gradual unfreezing as specified in arxiv.org/abs/1801.06146
             self.freeze_to(-1)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+            self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
                      callbacks=[])
             self.freeze_to(-2)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+            self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
                      callbacks=[])
 
         if chain_thaw:
@@ -291,15 +290,15 @@ class Learner(object):
             
             # fine-tune last layer
             self.freeze_to(-1)
-            self.fit(n_cycles=1, cycle_len=1, use_clr=clr, use_alt_clr=alt_clr, 
+            self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
                      callbacks=[])
             
             # fine-tune all layers up to the second-last one
             n = 0
             while n < nl - 1:
                 freeze_all_but(self, n)
-                self.fit(n_cycles=1, cycle_len=1, use_clr=clr, 
-                         use_alt_clr=alt_clr, callbacks=[])
+                self.fit(n_cycles=1, cycle_len=1, clr=clr, alt_clr=alt_clr, 
+                         callbacks=[])
                 n += 1
 
         if thaw_all:

@@ -58,7 +58,7 @@ class AWDLSTMEncoder(nn.Module):
         Arguments:
             bs (int): batch size of input data
             n_tokens (int): number of vocabulary (or tokens) in the source dataset
-            emb (int): the embedding size to use to encode each token
+            em (int): the embedding size to use to encode each token
             nh (int): number of hidden activation per LSTM layer
             nl (int): number of LSTM layers to use in the architecture
             pad_token (int): the int value used for padding text.
@@ -97,7 +97,7 @@ class AWDLSTMEncoder(nn.Module):
         Invoked during the forward propagation of the RNNEncoder module.
         
         Arguments:
-            input (Tensor): input of shape [sentence length x batch_size]
+            input (Tensor): input of shape [sentence length x batch size]
 
         Returns:
             raw_outputs (tuple(list (Tensor), list(Tensor)): list of tensors 

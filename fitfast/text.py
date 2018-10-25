@@ -110,7 +110,7 @@ class RNNLearner(Learner):
             # fine-tune all layers up to the second-last one
             n = 0
             while n < nl - 1:
-                self.freeze_all_but(self, n)
+                self.freeze_all_but(n)
                 self.fit(n_cycles=1, cycle_len=1, clr=clr, 
                          alt_clr=alt_clr, callbacks=[])
                 n += 1

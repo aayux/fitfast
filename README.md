@@ -1,6 +1,8 @@
 # [WIP] FitFast
 
-Quickly fine-tune language models for your downstream NLP tasks.
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+### Quickly fine-tune language models for your downstream NLP tasks.
 
 ### Instructions
 

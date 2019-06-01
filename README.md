@@ -15,6 +15,6 @@ $ pip install -r requirements.txt
 
 ### Notes
 
-- PyTorch versions greater than 0.3.1 may fail, goal is to make library compatible with 0.5.0+ syntax.
+- PyTorch versions greater than 0.4.0 may fail, goal is to make library compatible with lates PyTorch.
 - Predict method needs some re-writing.
-- See [GitHub repository](https://github.com/dust0x/fitfast/issues) for existing issues.
+
